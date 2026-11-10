@@ -170,6 +170,8 @@ enum WorkspaceRoute: String, CaseIterable, Identifiable {
         }
     }
     var title: String { L(rawValue) }
+    /// Changes and Review are the same working-tree files (same staging) shown as a list or as a review tree.
+    var isChanges: Bool { self == .changes || self == .review }
 }
 struct PendingOperation: Identifiable {
     var id = UUID()

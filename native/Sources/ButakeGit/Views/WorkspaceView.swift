@@ -79,12 +79,18 @@ private struct WorkspaceDetail: View {
     // No clipping or GeometryReader here: content and material backgrounds must extend under the
     // toolbar so the system glass keeps blurring them.
     var body: some View {
+        VStack(spacing: 0) {
+        // Centered selector for how Changes are shown (list or review), in its own row so no header is covered.
+        if store.route.isChanges && store.repository != nil {
+            WorkViewPicker(store: store).padding(.vertical, 8).frame(maxWidth: .infinity).background(.bar)
+            Divider()
+        }
         ZStack {
             // History and Changes stay mounted: rebuilding them on every switch cost 50–120 ms
             // with 1 500 files / thousands of commits. Hidden ones skip hit-testing and accessibility.
             if store.repository != nil {
                 PersistentPane(active: showsRepository && store.route == .history) { HistoryView(store: store) }
-                PersistentPane(active: showsRepository && store.route == .changes) { ChangesView(store: store) }
+                PersistentPane(active: showsRepository && store.route.isChanges) { ChangesView(store: store) }
             }
             Group {
                 if store.route == .dictionary { DictionaryView(store: store) }
@@ -92,7 +98,6 @@ private struct WorkspaceDetail: View {
                 else if store.repository == nil { WelcomeView(store: store) }
                 else {
                     switch store.route {
-                    case .review: ReviewView(store: store)
                     case .files: FileBrowserView(store: store)
                     case .branches: BranchesView(store: store)
                     case .sync: BranchSyncView(store: store)
@@ -107,11 +112,12 @@ private struct WorkspaceDetail: View {
             .id(store.repository == nil && store.route != .dictionary && store.route != .console ? "welcome" : store.route.rawValue)
             .transition(.opacity)
         }
+        }
         .searchable(text: $store.search, prompt: L(store.route == .changes || store.route == .review ? "searchChanges" : "searchHistory"))
         // Route-dependent window chrome lives here, not in WorkspaceView: reading the route there re-evaluated the
         // whole window (toolbar, sheets, split view) on every section switch.
         .navigationTitle(store.title)
-        .navigationSubtitle(store.route.title)
+        .navigationSubtitle(store.route.isChanges ? WorkspaceRoute.changes.title : store.route.title)
         .onChange(of: store.route) { _, route in if route != .history && route != .changes { store.showInspector = false } }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.smooth(duration: 0.3), value: store.repository == nil)
@@ -133,7 +139,8 @@ private struct PersistentPane<Content: View>: View {
 private struct SidebarView: View {
     @Bindable var store: WorkspaceStore
     @AppStorage("showRemoteBranches") private var showRemotes = false
-    var selection: Binding<WorkspaceRoute?> { Binding(get: { store.route }, set: { if let route = $0 { store.route = route } }) }
+    // List and Review share the Changes item; selecting it reopens the last view used.
+    var selection: Binding<WorkspaceRoute?> { Binding(get: { store.route.isChanges ? .changes : store.route }, set: { if let route = $0 { store.route = route == .changes ? (store.route.isChanges ? store.route : store.lastChangesRoute) : route } }) }
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 11) {
@@ -153,8 +160,8 @@ private struct SidebarView: View {
             }.menuStyle(.borderlessButton).accessibilityIdentifier("sidebar.repository").accessibilityLabel(L("openRepository")).accessibilityValue(store.repository.map { "\($0.name), \($0.branch)" } ?? "").padding(.horizontal, 14).padding(.bottom, 10).disabled(store.busy || store.terminalActive)
             List(selection: selection) {
                 Section(L("repository")) {
-                    ForEach([WorkspaceRoute.history, .changes, .review, .files, .branches, .sync, .worktrees, .tags, .stash, .remotes, .reflog]) { route in
-                        Label { HStack { Text(route.title); Spacer(); if route == .changes || route == .review, case let count = route == .review ? store.files.count - store.reviewedCount : store.files.count, count > 0 { Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit()).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.accent.opacity(0.14), in: Capsule()).countTransition(count).transition(.scale.combined(with: .opacity)) } } } icon: { Image(systemName: route.icon) }.listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)")
+                    ForEach([WorkspaceRoute.history, .changes, .files, .branches, .sync, .worktrees, .tags, .stash, .remotes, .reflog]) { route in
+                        Label { HStack { Text(route.title); Spacer(); if route == .changes, case let count = store.files.count, count > 0 { Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit()).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.accent.opacity(0.14), in: Capsule()).countTransition(count).transition(.scale.combined(with: .opacity)) } } } icon: { Image(systemName: route.icon) }.listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)")
                     }
                 }
                 Section(L("collaboration")) { ForEach([WorkspaceRoute.pullRequests, .pipelines, .agents]) { route in Label(route.title, systemImage: route.icon).listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)") } }
@@ -658,6 +665,19 @@ struct MainProtectionMenu: View {
 
 /// In full screen AppKit stacks the toolbar above the content, so nothing shows through its glass.
 /// Revealing it on hover lets the content fill the screen and the toolbar float over it, as in a window.
+/// How the Changes are shown: the same files and the same staging, as a list or as a review tree.
+private struct WorkViewPicker: View {
+    let store: WorkspaceStore
+    var body: some View {
+        Picker(L("changesView"), selection: Binding(get: { store.route }, set: { store.route = $0 })) {
+            Label(L("changesList"), systemImage: "list.bullet").tag(WorkspaceRoute.changes)
+            Label(L("changesTree"), systemImage: "folder").tag(WorkspaceRoute.review)
+        }
+        .pickerStyle(.segmented).labelsHidden().controlSize(.large).fixedSize()
+        .accessibilityIdentifier("work.view")
+        .help(L("workViewHelp"))
+    }
+}
 /// Reads the route itself so only the inspector re-evaluates when the section changes.
 private struct InspectorContent: View {
     let store: WorkspaceStore

@@ -8,15 +8,20 @@ struct ChangesView: View {
         HSplitView {
             VStack(spacing: 0) {
                 if !store.changes.conflicts.isEmpty, case let conflicts = store.changes.conflicts { ConflictsPane(store: store, files: conflicts).transition(.move(edge: .top).combined(with: .opacity)); Divider() }
-                VSplitView {
-                    FileGroupPane(store: store, title: L("unstaged"), files: store.filteredChanges(staged: false), staged: false, onResolve: { store.resolving = $0 })
-                        .frame(minHeight: 105, idealHeight: 260)
-                    FileGroupPane(store: store, title: L("staged"), files: store.filteredChanges(staged: true), staged: true, onResolve: { store.resolving = $0 })
-                        .frame(minHeight: 100, idealHeight: 170)
-                }.frame(maxHeight: .infinity)
+                // Same files and same staging, shown as two lists or as a folder tree (selector above).
+                if store.route == .review {
+                    ChangeTreePane(store: store, onResolve: { store.resolving = $0 }).frame(maxHeight: .infinity)
+                } else {
+                    VSplitView {
+                        FileGroupPane(store: store, title: L("unstaged"), files: store.filteredChanges(staged: false), staged: false, onResolve: { store.resolving = $0 })
+                            .frame(minHeight: 105, idealHeight: 260)
+                        FileGroupPane(store: store, title: L("staged"), files: store.filteredChanges(staged: true), staged: true, onResolve: { store.resolving = $0 })
+                            .frame(minHeight: 100, idealHeight: 170)
+                    }.frame(maxHeight: .infinity)
+                }
                 Divider()
                 CommitComposer(store: store, amend: $amend, onCommit: createCommit)
-            }.frame(minWidth: 240, idealWidth: 290, maxWidth: 380)
+            }.frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
             VStack(spacing: 0) {
                 HStack { Label(store.selectedFile?.path ?? L("diff"), systemImage: "doc.text").font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).contentTransition(.opacity); Spacer(); if let file = store.selectedFile, let stats = store.stats(for: file, staged: store.stagedSelection) { StatsBadge(stats: stats) }; if let file = store.selectedFile, !file.conflict { Button { editing = FileEditorTarget(path: file.path) } label: { Label(L("editFile"), systemImage: "pencil") }.controlSize(.small).disabled(!store.canWrite) }; if store.selectedFile != nil { Text(L(store.stagedSelection ? "staged" : "unstaged")).font(.caption2).foregroundStyle(.secondary) } }.padding(.horizontal, 16).frame(height: 39).background(.bar)
                 Divider()

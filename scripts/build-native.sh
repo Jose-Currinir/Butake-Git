@@ -37,8 +37,8 @@ cat > "$APP_PATH/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Butake Git</string>
 <key>CFBundleDisplayName</key><string>Butake Git</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0.4</string>
-<key>CFBundleVersion</key><string>104</string>
+<key>CFBundleShortVersionString</key><string>1.0.5</string>
+<key>CFBundleVersion</key><string>105</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSPrincipalClass</key><string>NSApplication</string>

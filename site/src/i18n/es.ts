@@ -25,7 +25,7 @@ export const t = {
     pestanas: [
       { id: 'historial', icono: 'git-commit-line', titulo: 'Historial', texto: 'Grafo de ramas, etiquetas «solo develop» y «copiado», y detalle de cada commit.', imagen: 'historial.png' },
       { id: 'cambios', icono: 'edit-box-line', titulo: 'Cambios', texto: 'Preparados y sin preparar, diff con sintaxis y compositor de commit.', imagen: 'cambios.png' },
-      { id: 'revisar', icono: 'checkbox-multiple-line', titulo: 'Revisar', texto: 'El revisor para lotes grandes de un agente, carpeta por carpeta.', imagen: 'revisar.png' },
+      { id: 'revisar', icono: 'folder-open-line', titulo: 'Carpetas', texto: 'Los mismos cambios por carpetas; cada casilla va en el commit.', imagen: 'revisar.png' },
       { id: 'diff', icono: 'code-s-slash-line', titulo: 'Diff', texto: 'Sólo la parte que cambió, resaltada dentro de la línea.', imagen: 'diff.png' },
       { id: 'sincronizar', icono: 'arrow-left-right-line', titulo: 'Sincronizar', texto: 'Qué falta en main y en develop, comparado por contenido.', imagen: 'sincronizar.png' },
       { id: 'pr', icono: 'git-pull-request-line', titulo: 'Pull requests', texto: 'Checks, revisores y comentarios en línea en una sola vista.', imagen: 'pull-request.png' },
@@ -56,13 +56,13 @@ export const t = {
     texto: 'Los clientes Git se diseñaron para cambios a mano. Un agente de IA puede tocar 1.200 archivos en minutos, y muchos equipos trabajan main y develop en paralelo.',
     tarjetas: [
       { icono: 'flashlight-line', titulo: 'Rápida con miles de archivos', texto: '1.500 cambios: refresco en ~100 ms, preparar todo en 0,3 s y scroll a 120 fps.' },
-      { icono: 'robot-2-line', titulo: 'Pensada para IA', texto: 'Revisor con marcas que se quitan solas si el agente vuelve a cambiar el archivo.' },
+      { icono: 'robot-2-line', titulo: 'Pensada para IA', texto: 'Cambios en lista o por carpetas, fluido con miles de archivos de un agente.' },
       { icono: 'shield-check-line', titulo: 'Segura por defecto', texto: 'Confirmación antes de cada cambio, force push bloqueado y tokens sólo en el llavero.' },
       { icono: 'apple-line', titulo: 'Nativa de verdad', texto: 'SwiftUI y AppKit, sin WebView. Vidrio de macOS, modo claro y oscuro, en español.' },
     ],
   },
   funciones: [
-    { id: 'revisar', icono: 'checkbox-multiple-line', etiqueta: 'Revisar cambios', titulo: 'Revisa lo que hizo la IA, archivo por archivo', texto: 'Árbol por carpetas, progreso y filtros por tipo y extensión. La marca de revisado se quita sola si el archivo vuelve a cambiar: nunca das por bueno algo que el agente modificó después.', puntos: ['Espacio: revisado y siguiente', 'S: preparar · N: siguiente sin revisar', 'Acciones por carpeta'], imagen: 'revisar.png', alt: 'Revisor de cambios agrupado por carpetas' },
+    { id: 'revisar', icono: 'folder-open-line', etiqueta: 'Cambios por carpetas', titulo: 'Lo que hizo la IA, carpeta por carpeta', texto: 'Los mismos cambios en Lista o en Carpetas. Cada casilla es «va en el commit»: marca un archivo o una carpeta entera; el mismo diff y el mismo compositor en ambas vistas.', puntos: ['Casilla por archivo o por carpeta', '↑↓ recorrer · Espacio preparar', 'Estado parcial por carpeta'], imagen: 'revisar.png', alt: 'Cambios agrupados por carpetas con casillas para el commit' },
     { id: 'codigo', icono: 'code-s-slash-line', etiqueta: 'Código', titulo: 'Diff que se lee como código', texto: 'Colores de sintaxis para más de 20 lenguajes, el +/− en el margen y sólo la parte que cambió resaltada dentro de la línea. Editor nativo con números de línea y vista previa de Markdown.', puntos: ['PHP, Blade, JS/TS, Python, Swift, Rust, SQL…', 'Más de 600 íconos de archivo', 'Guardado con detección de cambios ajenos'], imagen: 'diff.png', alt: 'Diff con resaltado de sintaxis y cambio dentro de la línea' },
     { id: 'ramas', icono: 'git-branch-line', etiqueta: 'Ramas', titulo: 'Intercambia commits entre main y develop', texto: 'Sincronizar ramas compara por contenido: un commit copiado con cherry-pick aparece como «ya está en ambas». Selecciona lo que falta y cópialo con un clic. Organiza la historia sin editor y con «Deshacer».', puntos: ['Detecta main o master en cada repositorio', 'Ramas remotas agrupadas por tipo', 'Respaldo antes de reescribir'], imagen: 'sincronizar.png', alt: 'Sincronizar ramas entre develop y main' },
     { id: 'pr', icono: 'git-pull-request-line', etiqueta: 'Pull requests', titulo: 'Todo lo que falta para integrar, en una vista', texto: 'Checks agrupados por lo que requieren, revisores, comentarios en línea con el código alrededor y sugerencias como −/+. «Arreglar con IA» copia una instrucción lista para tu agente.', puntos: ['GitHub y Bitbucket', 'Actions y Pipelines', 'Tokens sólo en el llavero de macOS'], imagen: 'pull-request.png', alt: 'Panel de pull request con checks y conversación' },
@@ -86,7 +86,7 @@ export const t = {
     titulo: 'Todo el flujo, en una sola app',
     texto: 'Desde el primer cambio del agente hasta el pull request integrado.',
     lista: [
-      { icono: 'checkbox-multiple-line', titulo: 'Revisar', ancla: '#revisar', items: ['Árbol por carpetas', 'Marcas que se invalidan solas', 'Filtros por tipo y extensión', 'Recorrido con teclado'] },
+      { icono: 'folder-open-line', titulo: 'Carpetas', ancla: '#revisar', items: ['Árbol por carpetas', 'Casillas para el commit', 'Estado parcial por carpeta', 'Recorrido con teclado'] },
       { icono: 'edit-box-line', titulo: 'Cambios y commits', ancla: '#codigo', items: ['Preparar por archivo o bloque', 'Tipo de commit y largo', 'Corregir el último commit', 'Diff con sintaxis'] },
       { icono: 'git-branch-line', titulo: 'Ramas', ancla: '#ramas', items: ['main o master según el repo', 'Ramas remotas por tipo', 'Sincronizar por contenido', 'Organizar con respaldo'] },
       { icono: 'git-pull-request-line', titulo: 'Pull requests', ancla: '#pr', items: ['Checks agrupados', 'Comentarios en línea', 'Sugerencias −/+', 'Arreglar con IA'] },

@@ -38,6 +38,7 @@ import QuartzCore
     @ObservationIgnored private var revision = 0
     /// Bumped whenever the changed files change (including file-only refreshes); keys the file-derived caches.
     @ObservationIgnored private var filesRevision = 0
+    @ObservationIgnored private var statsRevision = 0
     @ObservationIgnored private var historyCache: (key: String, model: HistoryModel)?
     @ObservationIgnored private var refreshInFlight = false
     @ObservationIgnored private var refreshQueued = false
@@ -58,7 +59,11 @@ import QuartzCore
     var creatingRepository = false
     var publishingRepository = false
     var renamingBranch: String?
-    var route: WorkspaceRoute = .history { didSet { if route != oldValue { autoSelectFile() } } }
+    var route: WorkspaceRoute = .history { didSet { if route != oldValue { autoSelectFile(); if route.isChanges { lastChangesRoute = route } } } }
+    /// Last way of viewing Changes (list or review); the sidebar item reopens it.
+    @ObservationIgnored var lastChangesRoute: WorkspaceRoute = UserDefaults.standard.string(forKey: "changesView") == WorkspaceRoute.review.rawValue ? .review : .changes {
+        didSet { UserDefaults.standard.set(lastChangesRoute.rawValue, forKey: "changesView") }
+    }
     /// Entering Changes or Review with nothing selected opens the first relevant diff instead of an empty pane.
     func autoSelectFile() {
         guard selectedFile == nil, route == .changes || route == .review else { return }
@@ -328,7 +333,7 @@ import QuartzCore
             result.reserveCapacity(entries.count)
             for entry in entries { result[LineStats.key(entry.path, staged: entry.staged)] = LineStats(additions: entry.additions, deletions: entry.deletions) }
             if result != fileStats {
-                fileStats = result
+                fileStats = result; statsRevision &+= 1
                 for (key, box) in statBoxes where box.value != result[key] { box.value = result[key] }
             }
         }
@@ -419,7 +424,7 @@ import QuartzCore
     }
     /// Filtered tree, memoized per snapshot, stats and filters.
     func reviewTree(query: String, extensionFilter: String?, kindFilter: ChangeKind? = nil, hideReviewed: Bool) -> (nodes: [ChangeNode], files: [ChangedFile]) {
-        let key = "\(filesRevision)|\(fileStats.count)|\(query)|\(extensionFilter ?? "*")|\(kindFilter?.rawValue ?? "*")|\(hideReviewed)|\(hideReviewed ? reviewed.count : 0)"
+        let key = "\(filesRevision)|\(statsRevision)|\(query)|\(extensionFilter ?? "*")|\(kindFilter?.rawValue ?? "*")|\(hideReviewed)|\(hideReviewed ? reviewed.count : 0)"
         if let cache = reviewCache, cache.key == key { return (cache.nodes, cache.files) }
         let needle = query.trimmingCharacters(in: .whitespaces)
         let files = files.filter { file in
@@ -839,6 +844,7 @@ import QuartzCore
                 task.cancel()
             case "checkUpdate": await UpdateService.shared.check(userInitiated: true); NSLog("BUTAKE_QA update phase=%@ latest=%@ available=%d", "\(UpdateService.shared.phase)", UpdateService.shared.latest?.version ?? "-", UpdateService.shared.updateAvailable ? 1 : 0)
             case "installUpdate": await UpdateService.shared.install(); NSLog("BUTAKE_QA update phase=%@", "\(UpdateService.shared.phase)")
+            case let name where name.hasPrefix("tree:"): NotificationCenter.default.post(name: .init("butake.qa.treeToggle"), object: String(name.dropFirst(5)))
             case "idle":
                 // Frame monitor without scrolling: measures hitches caused by background work (agent writes, refreshes).
                 let benchmark = ScrollBenchmark()

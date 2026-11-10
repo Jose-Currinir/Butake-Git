@@ -1,5 +1,12 @@
 # Cambios
 
+## 1.0.5 · 2026-11-10
+
+- **Cambios en Lista o Carpetas:** una sola vista con selector centrado. En Carpetas, cada casilla es
+  «va en el commit» (archivo o carpeta entera, con estado parcial); mismo diff y compositor en ambas.
+- Se retira la pantalla «Revisar cambios» con marcas de revisado: preparar y revisar son lo mismo.
+- Historial queda como sección propia.
+
 ## 1.0.4 · 2026-11-10
 
 - La instalación de una actualización ya no se queda en «Instalando»: la hoja se cierra antes de salir y,

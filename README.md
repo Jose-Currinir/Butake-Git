@@ -44,7 +44,7 @@ Usa el Git que ya tienes, con tus llaves SSH, tus hooks y tu gestor de credencia
 <table>
   <tr>
     <td width="33%" valign="top"><h3>⚡ Rápida</h3>1.500 archivos cambiados: refresco en ~100 ms, preparar todo en 0,3 s y scroll a 120 fps.</td>
-    <td width="33%" valign="top"><h3>🤖 Hecha para IA</h3>Revisor con marcas que se quitan solas si el archivo vuelve a cambiar, y operable por agentes vía accesibilidad.</td>
+    <td width="33%" valign="top"><h3>🤖 Hecha para IA</h3>Cambios en lista o por carpetas para lotes enormes de un agente, fluido con miles de archivos y operable por agentes vía accesibilidad.</td>
     <td width="33%" valign="top"><h3>🛡️ Segura</h3>Confirmación antes de cada cambio, force push bloqueado, argumentos sin shell y tokens sólo en el llavero.</td>
   </tr>
   <tr>
@@ -70,11 +70,11 @@ Paneles **sin preparar** y **preparados**, con el tipo de cada cambio (Nuevo, Mo
 
 ![Cambios con diff y compositor de commit](docs/presentacion/cambios.png)
 
-### Revisar cambios: hecho para lo que produce la IA
+### Cambios por carpetas: hecho para lo que produce la IA
 
-Árbol por carpetas, progreso («120 de 1.500 revisados»), filtros por tipo y extensión. La marca de **revisado se quita sola si el archivo vuelve a cambiar**: nunca das por bueno algo que el agente modificó después. Teclado: <kbd>Espacio</kbd> revisado y siguiente · <kbd>S</kbd> preparar · <kbd>N</kbd> siguiente sin revisar.
+Los mismos cambios, vistos como **Lista** o como **Carpetas**. En Carpetas, cada casilla es «va en el commit»: marca un archivo o una carpeta entera y queda preparada; la casilla con «–» indica que sólo parte de la carpeta va. Mismo diff y mismo compositor en ambas vistas. Teclado: <kbd>↑</kbd><kbd>↓</kbd> recorrer · <kbd>Espacio</kbd> preparar o sacar · doble clic prepara.
 
-![Revisor de cambios por carpetas](docs/presentacion/revisar.png)
+![Cambios por carpetas con casillas para el commit](docs/presentacion/revisar.png)
 
 ### Ver y editar código
 
