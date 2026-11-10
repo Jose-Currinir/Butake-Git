@@ -181,7 +181,7 @@ Cada control relevante tiene un identificador de accesibilidad estable (`toolbar
 
 ## 📦 Instalar
 
-**Descarga directa:** [Butake-Git.dmg](https://github.com/Jose-Currinir/Butake-Git/releases/latest/download/Butake-Git.dmg) (Mac con Apple Silicon, macOS 14+). Abre el `.dmg` y arrastra la app a Aplicaciones. Como aún no está firmada con Developer ID, la primera vez macOS pide confirmar en **Ajustes del Sistema › Privacidad y seguridad › «Abrir igualmente»**.
+**Descarga directa:** [Butake-Git.dmg](https://github.com/Jose-Currinir/Butake-Git/releases/latest/download/Butake-Git.dmg) (Mac con Apple Silicon, macOS 14+). Abre el `.dmg` y arrastra la app a Aplicaciones. Está firmada con Developer ID de Butake SpA y notarizada por Apple: abre sin advertencias.
 
 **Desde el código:** requiere Xcode Command Line Tools (Swift 6), Rust estable y Git.
 
@@ -199,7 +199,7 @@ SwiftUI / AppKit  ──JSON──▶  motor Rust  ──argumentos──▶  Gi
 
 ## 🗺️ Estado
 
-Se usa a diario sobre repositorios reales. Todavía no hace: preparación por líneas sueltas, conflictos por bloque, integración de PR en pila ni actualizaciones automáticas; la firma Developer ID está pendiente. Ver la [matriz de funciones](docs/feature-matrix.md) y los [pendientes](docs/roadmap.md).
+Se usa a diario sobre repositorios reales. Todavía no hace: preparación por líneas sueltas, conflictos por bloque, integración de PR en pila ni actualizaciones automáticas. Ver la [matriz de funciones](docs/feature-matrix.md) y los [pendientes](docs/roadmap.md).
 
 ## 🤝 Contribuir
 

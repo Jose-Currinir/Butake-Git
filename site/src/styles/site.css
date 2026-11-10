@@ -82,6 +82,7 @@ p { margin: 0; }
 .lista-estado li { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); font-size: 15px; line-height: 1.5; }
 .estado { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 13px; font-weight: 600; color: var(--success-text); padding: 2px 10px; border-radius: var(--radius-pill); background: var(--success-soft); margin-top: 1px; }
 .estado-advertencia { color: var(--warning-text); background: var(--warning-soft); margin-right: 10px; }
+.estado-exito { margin-right: 10px; }
 .punto { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .punto-exito { background: var(--butake-status-active); }
 .punto-advertencia { background: var(--butake-status-warning); }

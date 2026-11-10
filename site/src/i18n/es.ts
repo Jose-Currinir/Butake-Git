@@ -36,7 +36,7 @@ export const t = {
     items: [
       { p: '¿Es gratis?', r: 'Sí. Butake Git es de código abierto bajo licencia Apache 2.0. Puedes usarlo, estudiarlo y proponer mejoras.' },
       { p: '¿En qué Mac funciona?', r: 'En Mac con Apple Silicon y macOS 14 o superior. La versión para Intel todavía no está disponible.' },
-      { p: '¿Por qué macOS pide confirmar al abrirla?', r: 'Porque esta versión aún no está firmada con un certificado Developer ID de Apple. Ve a Ajustes del Sistema › Privacidad y seguridad › «Abrir igualmente». Estamos preparando la versión firmada y notarizada.' },
+      { p: '¿Es segura de instalar?', r: 'Sí. Está firmada con el certificado Developer ID de Butake SpA y notarizada por Apple, así que macOS la abre sin advertencias. Además puedes verificar la suma SHA-256 publicada junto a cada versión.' },
       { p: '¿Dónde quedan mis tokens de GitHub o Bitbucket?', r: 'Sólo en el llavero de macOS. Nunca en el repositorio, en registros ni en preferencias. Git sigue usando tu SSH Agent y tu gestor de credenciales.' },
       { p: '¿Reemplaza a Git?', r: 'No. Usa el Git que ya tienes instalado, con tus hooks y tu configuración. Butake Git lo hace más claro y agrega protecciones.' },
       { p: '¿Puedo contribuir?', r: 'Sí: haz un fork y abre un pull request hacia develop. El equipo lo revisa antes de integrarlo. Para cambios grandes, abre antes un issue.' },
@@ -134,9 +134,9 @@ export const t = {
     pasos: [
       { titulo: 'Descarga', texto: 'Baja Butake-Git.dmg desde la última versión.' },
       { titulo: 'Arrastra', texto: 'Abre el .dmg y arrastra Butake Git a Aplicaciones.' },
-      { titulo: 'Abre', texto: 'La primera vez, macOS pedirá confirmar: Ajustes del Sistema › Privacidad y seguridad › «Abrir igualmente».' },
+      { titulo: 'Abre', texto: 'Ábrela desde Aplicaciones. Firmada y notarizada por Apple: sin advertencias.' },
     ],
-    aviso: 'La app aún no está firmada con un certificado de Apple (Developer ID); por eso macOS pide confirmarla la primera vez.',
+    aviso: 'Firmada con Developer ID de Butake SpA y notarizada por Apple.',
     codigoTitulo: 'O compila desde el código',
     codigo: 'git clone https://github.com/Jose-Currinir/Butake-Git.git\ncd Butake-Git\n./scripts/install-native.sh',
   },

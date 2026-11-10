@@ -43,9 +43,9 @@ La política local protege main y bloquea force push, pushes masivos y ciertas v
 
 La API Bitbucket está implementada, **sin validación contra una cuenta real**; páginas iniciales de resultados, sin paginación completa. No hay revisión inline de PR, orquestación simultánea de agentes, Insights, Jira ni integración AWS CodePipeline. Sólo una sesión PTY activa.
 
-`native/` (app) y `engine/` (motor) son todo el producto. No hay CI/CD activado. Firma Developer ID y notarización pendientes.
+`native/` (app) y `engine/` (motor) son todo el producto. No hay CI/CD activado. La firma y notarización se hacen en local con `package-dmg.sh`.
 
 ## Instalador y sitio
 
-- `./scripts/package-dmg.sh` arma `build/Butake-Git.dmg` (firma ad hoc, Apple Silicon) y su suma SHA-256. Se publica como recurso de cada versión en GitHub Releases.
+- `./scripts/package-dmg.sh` arma `build/Butake-Git.dmg` (firmado con Developer ID, notarizado y con ticket adjunto si el certificado y el perfil `butake-notary` están en el llavero; si no, ad hoc) y su suma SHA-256. Se publica como recurso de cada versión en GitHub Releases.
 - `site/` es la página de presentación (Astro, estándar visual Butake: monocromo, Inter, Remix Icon). `cd site && npm install && npm run dev`. El workflow `.github/workflows/pages.yml` la publica en GitHub Pages cuando cambia `main`.
