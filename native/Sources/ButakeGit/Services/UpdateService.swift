@@ -104,7 +104,14 @@ import Foundation
                 throw UpdateError.message(L("updateNoPermission"))
             }
             try Self.launchReplacement(staged: staged, target: target, work: work)
+            // An attached sheet makes the window refuse to close, which cancels the quit; dismiss it first.
+            showingSheet = false
+            try? await Task.sleep(for: .milliseconds(400))
             NSApp.terminate(nil)
+            // If anything still cancels the quit, leave anyway: the verified replacement is waiting for this exit.
+            try? await Task.sleep(for: .seconds(3))
+            UserDefaults.standard.synchronize()
+            exit(0)
         } catch {
             phase = .failed((error as? UpdateError)?.text ?? error.localizedDescription)
         }

@@ -331,3 +331,4 @@ p { margin: 0; }
 
 @media (prefers-reduced-motion: reduce) { .escena .vitrina-grande { transform: none; } .vitrina-grande > .panel { transition: none; filter: none; } }
 @media (forced-colors: active) { .cierre, .pregunta, .vitrina, .pestanas { border: 1px solid CanvasText; } }
+.nota-centro { max-width: 40rem; margin-inline: auto; line-height: 1.55; }

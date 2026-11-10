@@ -224,6 +224,12 @@ const jsonLd = {
       <div class="acciones acciones-centro">
         <a class="boton boton-primario" href={descarga}><Icon name="download-2-line" size={20} /> {t.hero.descargar}</a>
       </div>
+      <h3 class="subtitulo">{t.instalar.actualizarTitulo}</h3>
+      <p class="nota nota-centro">{t.instalar.actualizarTexto}</p>
+      <div class="codigo-caja revelar">
+        <pre class="codigo"><code>{t.instalar.actualizarCodigo}</code></pre>
+        <button class="copiar" type="button" data-copiar aria-label="Copiar comando de actualización"><Icon name="file-copy-line" size={16} /><span>Copiar</span></button>
+      </div>
       <h3 class="subtitulo">{t.instalar.codigoTitulo}</h3>
       <div class="codigo-caja revelar">
         <pre class="codigo"><code>{t.instalar.codigo}</code></pre>

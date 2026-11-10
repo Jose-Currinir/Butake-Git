@@ -1,5 +1,12 @@
 # Cambios
 
+## 1.0.4 · 2026-11-10
+
+- La instalación de una actualización ya no se queda en «Instalando»: la hoja se cierra antes de salir y,
+  si algo bloquea el cierre, la app sale igual para que el reemplazo verificado termine.
+- Comando para actualizar versiones anteriores sin desinstalar (`scripts/actualizar.sh`): descarga la
+  última versión, verifica suma SHA-256, firma y notarización, y reemplaza la app.
+
 ## 1.0.3 · 2026-11-10
 
 - **Actualizaciones:** la versión instalada se ve junto a Ajustes; la app busca versiones nuevas en
