@@ -1,0 +1,292 @@
+[
+  {
+    "id": "repository",
+    "term": "Repositorio",
+    "definition": "Base de objetos, referencias y configuración que guarda el historial de un proyecto."
+  },
+  {
+    "id": "working-tree",
+    "term": "Directorio de trabajo",
+    "definition": "Archivos que estás editando. Pueden diferir del índice y del último commit."
+  },
+  {
+    "id": "index",
+    "term": "Índice / staging area",
+    "definition": "Instantánea preparada para el próximo commit; no incluye automáticamente todos los cambios locales."
+  },
+  {
+    "id": "commit",
+    "term": "Commit",
+    "definition": "Objeto inmutable que registra árbol, padres, autor y mensaje. Editarlo produce otro identificador."
+  },
+  {
+    "id": "branch",
+    "term": "Rama",
+    "definition": "Referencia móvil a un commit. Avanza al crear nuevos commits en ella."
+  },
+  {
+    "id": "head",
+    "term": "HEAD",
+    "definition": "Referencia al commit o rama que está seleccionado en el directorio de trabajo."
+  },
+  {
+    "id": "detached",
+    "term": "Detached HEAD",
+    "definition": "HEAD apunta directamente a un commit. Crear una rama conserva los nuevos commits de esa sesión."
+  },
+  {
+    "id": "remote",
+    "term": "Remoto",
+    "definition": "Nombre asociado a otro repositorio, sus URLs y reglas de intercambio."
+  },
+  {
+    "id": "origin",
+    "term": "origin",
+    "definition": "Nombre convencional del remoto creado al clonar. No es una palabra reservada del protocolo."
+  },
+  {
+    "id": "upstream",
+    "term": "Upstream",
+    "definition": "Rama de seguimiento usada para comparar divergencia y elegir destinos predeterminados."
+  },
+  {
+    "id": "fetch",
+    "term": "Fetch",
+    "definition": "Descarga objetos y actualiza referencias remotas sin integrar cambios en tu rama."
+  },
+  {
+    "id": "pull",
+    "term": "Pull",
+    "definition": "Combina fetch con integración por merge, rebase o fast-forward."
+  },
+  {
+    "id": "push",
+    "term": "Push",
+    "definition": "Publica referencias y objetos. En este proyecto puede activar CI/CD."
+  },
+  {
+    "id": "merge",
+    "term": "Merge",
+    "definition": "Integra historiales preservando la relación entre sus ramas; puede crear un commit con varios padres."
+  },
+  {
+    "id": "fast-forward",
+    "term": "Fast-forward",
+    "definition": "Avance de una referencia hacia un descendiente sin crear commit de merge."
+  },
+  {
+    "id": "rebase",
+    "term": "Rebase",
+    "definition": "Reaplica commits en otra base. Cambian los hashes; pueden aparecer conflictos."
+  },
+  {
+    "id": "interactive-rebase",
+    "term": "Rebase interactivo",
+    "definition": "Plan para conservar, reordenar, combinar, renombrar, editar o eliminar commits."
+  },
+  {
+    "id": "pick",
+    "term": "Pick",
+    "definition": "Conserva el cambio del commit en el plan de rebase."
+  },
+  {
+    "id": "reword",
+    "term": "Reword",
+    "definition": "Conserva el cambio y abre el editor para modificar el mensaje del commit."
+  },
+  {
+    "id": "edit",
+    "term": "Edit",
+    "definition": "Detiene el rebase en ese commit para permitir cambios antes de continuar."
+  },
+  {
+    "id": "squash",
+    "term": "Squash",
+    "definition": "Combina el cambio con el commit anterior y permite editar el mensaje combinado."
+  },
+  {
+    "id": "fixup",
+    "term": "Fixup",
+    "definition": "Combina el cambio con el commit anterior y descarta el mensaje del commit marcado."
+  },
+  {
+    "id": "drop",
+    "term": "Drop",
+    "definition": "Excluye el commit del historial resultante del rebase."
+  },
+  {
+    "id": "cherry-pick",
+    "term": "Cherry-pick",
+    "definition": "Aplica el cambio de un commit seleccionado sobre la rama actual."
+  },
+  {
+    "id": "revert",
+    "term": "Revert",
+    "definition": "Crea un commit que invierte un cambio anterior; conserva el historial original."
+  },
+  {
+    "id": "reset",
+    "term": "Reset",
+    "definition": "Mueve una referencia. Sus modos soft, mixed y hard afectan diferentes capas del estado local."
+  },
+  {
+    "id": "soft-reset",
+    "term": "Reset soft",
+    "definition": "Mueve HEAD y conserva índice y archivos tal como estaban."
+  },
+  {
+    "id": "mixed-reset",
+    "term": "Reset mixed",
+    "definition": "Mueve HEAD y restablece el índice; conserva archivos de trabajo."
+  },
+  {
+    "id": "hard-reset",
+    "term": "Reset hard",
+    "definition": "Restablece HEAD, índice y archivos versionados; puede perder cambios locales."
+  },
+  {
+    "id": "stash",
+    "term": "Stash",
+    "definition": "Entrada local que guarda cambios temporalmente para recuperarlos después."
+  },
+  {
+    "id": "reflog",
+    "term": "Reflog",
+    "definition": "Registro local de movimientos de referencias; ayuda a recuperar commits que ya no aparecen en ramas."
+  },
+  {
+    "id": "worktree",
+    "term": "Worktree",
+    "definition": "Directorio adicional del mismo repositorio con su propio HEAD e índice."
+  },
+  {
+    "id": "tag",
+    "term": "Tag",
+    "definition": "Etiqueta que señala un objeto; puede ser ligera, anotada y firmada."
+  },
+  {
+    "id": "conflict",
+    "term": "Conflicto",
+    "definition": "Git no pudo integrar automáticamente cambios. Debes resolver el resultado y preparar el archivo."
+  },
+  {
+    "id": "ours-theirs",
+    "term": "Ours / theirs",
+    "definition": "Lados de una integración. En rebase su interpretación puede resultar distinta a la de merge."
+  },
+  {
+    "id": "base",
+    "term": "Base común",
+    "definition": "Ancestro usado como punto de comparación para integrar cambios."
+  },
+  {
+    "id": "hunk",
+    "term": "Hunk",
+    "definition": "Bloque de diferencias con líneas de contexto; puede prepararse de forma parcial."
+  },
+  {
+    "id": "patch",
+    "term": "Parche",
+    "definition": "Representación textual de cambios que Git puede revisar y aplicar."
+  },
+  {
+    "id": "tracked",
+    "term": "Archivo con seguimiento",
+    "definition": "Archivo registrado en el índice. Puede estar modificado, eliminado o sin cambios."
+  },
+  {
+    "id": "untracked",
+    "term": "Archivo sin seguimiento",
+    "definition": "Archivo presente en disco que todavía no está registrado en el índice."
+  },
+  {
+    "id": "ignored",
+    "term": "Archivo ignorado",
+    "definition": "Ruta excluida por reglas de ignore mientras no tenga seguimiento."
+  },
+  {
+    "id": "staged",
+    "term": "Cambio preparado",
+    "definition": "Versión de un archivo registrada en el índice para el próximo commit."
+  },
+  {
+    "id": "amend",
+    "term": "Amend",
+    "definition": "Sustituye el último commit por uno nuevo, cambiando contenido o mensaje."
+  },
+  {
+    "id": "signed-commit",
+    "term": "Firma de commit",
+    "definition": "Firma criptográfica verificable con el mecanismo configurado en Git."
+  },
+  {
+    "id": "hook",
+    "term": "Hook",
+    "definition": "Programa configurado que se ejecuta durante determinadas operaciones Git."
+  },
+  {
+    "id": "submodule",
+    "term": "Submódulo",
+    "definition": "Referencia a otro repositorio en un commit concreto dentro del proyecto principal."
+  },
+  {
+    "id": "lfs",
+    "term": "Git LFS",
+    "definition": "Extensión para gestionar archivos grandes mediante punteros y almacenamiento separado."
+  },
+  {
+    "id": "sparse",
+    "term": "Sparse checkout",
+    "definition": "Configuración que limita qué rutas aparecen en el directorio de trabajo."
+  },
+  {
+    "id": "shallow",
+    "term": "Clon superficial",
+    "definition": "Clon con historial limitado por profundidad o fecha."
+  },
+  {
+    "id": "partial",
+    "term": "Clon parcial",
+    "definition": "Clon que omite inicialmente determinados objetos y puede descargarlos después."
+  },
+  {
+    "id": "bisect",
+    "term": "Bisect",
+    "definition": "Búsqueda binaria entre un commit bueno y uno malo para localizar una regresión."
+  },
+  {
+    "id": "blame",
+    "term": "Blame",
+    "definition": "Vista que atribuye líneas a commits y autores; no determina responsabilidad por sí sola."
+  },
+  {
+    "id": "refspec",
+    "term": "Refspec",
+    "definition": "Regla que relaciona referencias de origen y destino en fetch o push."
+  },
+  {
+    "id": "pr",
+    "term": "Pull request",
+    "definition": "Solicitud de integración gestionada por Bitbucket, GitHub o GitLab. No es un objeto de Git."
+  },
+  {
+    "id": "checks",
+    "term": "Checks",
+    "definition": "Resultados de validaciones vinculadas al código por el proveedor o el sistema CI."
+  },
+  {
+    "id": "ci-cd",
+    "term": "CI/CD",
+    "definition": "Automatización de validación y entrega. Un push o merge puede disparar despliegues."
+  },
+  {
+    "id": "protected",
+    "term": "Rama protegida",
+    "definition": "Rama con reglas que restringen cambios. Las guardas locales no sustituyen la protección del servidor."
+  },
+  {
+    "id": "agent",
+    "term": "Sesión de agente",
+    "definition": "Proceso de una herramienta de programación asistida que trabaja en un repositorio o worktree."
+  }
+]

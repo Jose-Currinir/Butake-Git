@@ -1,0 +1,13 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Native macOS app and Rust engine
+engine/target/
+native/.build/
+native/.swiftpm/
+build/
+
+# Notas internas de desarrollo (no se publican)
+internal/

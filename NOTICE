@@ -1,0 +1,13 @@
+Butake Git
+Copyright 2026 Butake SpA
+
+Este producto se distribuye bajo la Licencia Apache, versión 2.0 (ver LICENSE).
+
+Marca: el nombre «Butake», el logo y la identidad visual son marcas de Butake SpA.
+La licencia no otorga permiso para usarlas (sección 6); las versiones distribuidas
+por terceros deben usar otro nombre y otro logo.
+
+Incluye o usa obras de terceros con sus propias licencias:
+- Íconos de archivo de Material Icon Theme (native/Sources/ButakeGit/FileIcons/), Licencia MIT.
+- SwiftTerm (dependencia de Swift Package Manager), Licencia MIT.
+- Crates de Rust declarados en engine/Cargo.toml, con sus licencias (MIT o Apache 2.0).
