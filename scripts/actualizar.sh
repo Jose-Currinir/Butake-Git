@@ -15,7 +15,6 @@ set -euo pipefail
 REPO="Jose-Currinir/Butake-Git"
 TEAM="9MJ82YJXM2"
 BUNDLE="cl.butake.git.native"
-LATEST="https://github.com/$REPO/releases/latest/download"
 FORCE=0; [ "${1:-}" = "--forzar" ] && FORCE=1
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
@@ -30,8 +29,11 @@ else APP="/Applications/Butake Git.app"; fi
 
 installed="$( [ -d "$APP" ] && /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist" 2>/dev/null || echo "")"
 api="$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/latest")" || fail "No se pudo consultar GitHub."
-latest="$(printf '%s' "$api" | plutil -extract tag_name raw -o - - 2>/dev/null | sed 's/^[vV]//')"
+tag="$(printf '%s' "$api" | plutil -extract tag_name raw -o - - 2>/dev/null)"
+latest="${tag#[vV]}"
 [ -n "$latest" ] || fail "No se encontró la última versión publicada."
+# URL de esa versión exacta: «releases/latest/download» puede seguir sirviendo la anterior por caché.
+DOWNLOAD="https://github.com/$REPO/releases/download/$tag"
 
 newer() { # ¿$1 es mayor que $2? (comparación numérica por partes)
   local IFS=.; local a=($1) b=($2) i
@@ -54,8 +56,8 @@ cleanup() { hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true; rm -rf "$WOR
 trap cleanup EXIT
 
 say "Descargando Butake Git $latest…"
-curl -fL --progress-bar -o "$WORK/Butake-Git.dmg" "$LATEST/Butake-Git.dmg" || fail "No se pudo descargar el instalador."
-curl -fsSL -o "$WORK/Butake-Git.dmg.sha256" "$LATEST/Butake-Git.dmg.sha256" || fail "No se pudo descargar la suma SHA-256."
+curl -fL --progress-bar -o "$WORK/Butake-Git.dmg" "$DOWNLOAD/Butake-Git.dmg" || fail "No se pudo descargar el instalador."
+curl -fsSL -o "$WORK/Butake-Git.dmg.sha256" "$DOWNLOAD/Butake-Git.dmg.sha256" || fail "No se pudo descargar la suma SHA-256."
 
 say "Verificando…"
 expected="$(awk '{print tolower($1)}' "$WORK/Butake-Git.dmg.sha256")"
@@ -66,6 +68,8 @@ echo "  ✓ Suma SHA-256"
 mkdir -p "$MOUNT"
 hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$MOUNT" "$WORK/Butake-Git.dmg" >/dev/null 2>&1 || fail "No se pudo abrir el instalador."
 ditto "$MOUNT/Butake Git.app" "$WORK/Butake Git.app" || fail "El instalador no contiene la app."
+got="$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$WORK/Butake Git.app/Contents/Info.plist" 2>/dev/null || echo "")"
+[ "$got" = "$latest" ] || fail "El instalador descargado es la versión $got, no la $latest. No se instaló nada; inténtalo en unos minutos."
 hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true
 
 codesign --verify --deep --strict "$WORK/Butake Git.app" 2>/dev/null || fail "La firma de la app no es válida. No se instaló nada."
