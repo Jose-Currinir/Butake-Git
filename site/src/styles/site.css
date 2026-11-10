@@ -198,3 +198,46 @@ p { margin: 0; }
 }
 .js .revelar.visible:is(.tarjeta, .paso, .cifra, li):hover { transform: translateY(-3px); }
 .js .revelar.visible.lista-estado li:hover, .js .lista-estado li.revelar.visible:hover { transform: none; }
+
+/* ===== Portada dividida, marco y franja (inspirados en planos técnicos) ===== */
+.marco { position: relative; width: min(1240px, 100%); margin-inline: auto; border-inline: 1px solid var(--line); background:
+  linear-gradient(var(--line), var(--line)) 0 0 / 100% 1px no-repeat; }
+@media (max-width: 1272px) { .marco { border-inline: 0; } }
+.marco > section + section { border-top: 1px solid var(--line); position: relative; }
+.marco > section + section::before, .marco > section + section::after { content: '+'; position: absolute; top: -12px; font: 300 18px/1 var(--font-sans); color: var(--line-strong); }
+.marco > section + section::before { left: -6px; } .marco > section + section::after { right: -6px; }
+@media (max-width: 1272px) { .marco > section + section::before, .marco > section + section::after { display: none; } }
+.marco > .seccion { padding-bottom: 96px; }
+
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: center; text-align: left; padding: 80px 0 72px; }
+.hero h1 { margin: 22px 0 0; max-width: 14ch; }
+.hero-texto { margin: 20px 0 0; }
+.hero .acciones { justify-content: flex-start; }
+@media (max-width: 960px) { .hero { grid-template-columns: 1fr; text-align: center; padding-top: 56px; } .hero h1, .hero-texto { margin-inline: auto; } .hero .acciones { justify-content: center; } .hero-visual { max-width: 420px; margin-inline: auto; width: 100%; } }
+
+.franja { padding: 28px 0; overflow: hidden; }
+.franja-titulo { text-align: center; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--subtle-text); margin-bottom: 18px; }
+.cinta { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.cinta-pista { list-style: none; margin: 0; padding: 0; display: flex; gap: 48px; width: max-content; animation: cinta 38s linear infinite; }
+.cinta:hover .cinta-pista { animation-play-state: paused; }
+.cinta-pista li { display: inline-flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+@keyframes cinta { to { transform: translateX(-50%); } }
+
+.escena-seccion { padding: 64px 0 80px; }
+.escena-seccion .escena { margin-top: 0; }
+
+.areas { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.area { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.area-cabecera { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); text-decoration: none; background: var(--surface-soft); }
+.area-cabecera h3 { font-size: 1.05rem; font-weight: 700; flex: 1; }
+.area-cabecera > .icono:last-child { color: var(--muted); transition: transform var(--motion-fast); }
+.area:hover .area-cabecera > .icono:last-child { transform: translate(2px, -2px); color: var(--text); }
+.area > ul { list-style: none; margin: 0; padding: 12px 8px 14px; display: grid; gap: 2px; }
+.area > ul a { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: var(--muted); font-size: 15px; transition: color var(--motion-fast), background var(--motion-fast); }
+.area > ul a .icono { opacity: 0; transform: translateX(-4px); transition: opacity var(--motion-fast), transform var(--motion-fast); }
+.area > ul a:hover { color: var(--text); background: color-mix(in srgb, var(--text) 4%, transparent); }
+.area > ul a:hover .icono { opacity: 1; transform: none; }
+.rejilla-extra { margin-top: 16px; }
+.js .revelar.visible.area:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: var(--shadow-surface-hover); }
+
+@media (prefers-reduced-motion: reduce) { .cinta-pista { animation: none; flex-wrap: wrap; justify-content: center; width: auto; } }

@@ -32,6 +32,32 @@ export const t = {
     { id: 'pr', icono: 'git-pull-request-line', etiqueta: 'Pull requests', titulo: 'Todo lo que falta para integrar, en una vista', texto: 'Checks agrupados por lo que requieren, revisores, comentarios en línea con el código alrededor y sugerencias como −/+. «Arreglar con IA» copia una instrucción lista para tu agente.', puntos: ['GitHub y Bitbucket', 'Actions y Pipelines', 'Tokens sólo en el llavero de macOS'], imagen: 'pull-request.png', alt: 'Panel de pull request con checks y conversación' },
     { id: 'notch', icono: 'macbook-line', etiqueta: 'Notch', titulo: 'Tu repositorio, junto a la cámara', texto: 'Cambios y commits por bajar o subir a los lados del notch. Al pasar el cursor: cambia de repositorio o rama, confirma subir o bajar y haz commit sin abrir la ventana.', puntos: ['Panel flotante nativo', 'Commit y subir en un paso', 'Se desactiva en Ajustes'], imagen: 'notch-open.png', alt: 'Tarjeta del notch con métricas y acciones' },
   ],
+  funcionaCon: {
+    titulo: 'Funciona con lo que ya usas',
+    items: [
+      { icono: 'git-branch-line', texto: 'Git' },
+      { icono: 'github-fill', texto: 'GitHub' },
+      { icono: 'git-repository-line', texto: 'Bitbucket' },
+      { icono: 'key-2-line', texto: 'SSH Agent' },
+      { icono: 'apple-fill', texto: 'macOS' },
+      { icono: 'robot-2-line', texto: 'Claude Code' },
+      { icono: 'sparkling-2-line', texto: 'Codex' },
+      { icono: 'terminal-box-line', texto: 'Terminal' },
+      { icono: 'lock-2-line', texto: 'Llavero de macOS' },
+    ],
+  },
+  areas: {
+    titulo: 'Todo el flujo, en una sola app',
+    texto: 'Desde el primer cambio del agente hasta el pull request integrado.',
+    lista: [
+      { icono: 'checkbox-multiple-line', titulo: 'Revisar', ancla: '#revisar', items: ['Árbol por carpetas', 'Marcas que se invalidan solas', 'Filtros por tipo y extensión', 'Recorrido con teclado'] },
+      { icono: 'edit-box-line', titulo: 'Cambios y commits', ancla: '#codigo', items: ['Preparar por archivo o bloque', 'Tipo de commit y largo', 'Corregir el último commit', 'Diff con sintaxis'] },
+      { icono: 'git-branch-line', titulo: 'Ramas', ancla: '#ramas', items: ['main o master según el repo', 'Ramas remotas por tipo', 'Sincronizar por contenido', 'Organizar con respaldo'] },
+      { icono: 'git-pull-request-line', titulo: 'Pull requests', ancla: '#pr', items: ['Checks agrupados', 'Comentarios en línea', 'Sugerencias −/+', 'Arreglar con IA'] },
+      { icono: 'macbook-line', titulo: 'Notch', ancla: '#notch', items: ['Cambios y commits pendientes', 'Cambiar repo o rama', 'Commit sin abrir la app', 'Panel flotante nativo'] },
+      { icono: 'folder-add-line', titulo: 'Repositorios', ancla: '#instalar', items: ['Crear con main y develop', 'Clonar de tus cuentas', 'Publicar en un paso', 'Worktrees, stash y tags'] },
+    ],
+  },
   galeria: {
     titulo: 'Y mucho más',
     items: [
