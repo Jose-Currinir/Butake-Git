@@ -19,7 +19,8 @@ struct WorkspaceView: View {
             .animation(.smooth(duration: 0.25), value: store.repository?.operation)
             // The system toolbar background overhangs the split divider by ~3 pt and draws a step against
             // the content edge; without it the title sits on the window background and only the glass items remain.
-            .toolbarBackground(.hidden, for: .windowToolbar)
+            // With the inspector open the search field spans both columns; a visible background keeps it on one surface.
+            .toolbarBackground(store.showInspector ? .visible : .hidden, for: .windowToolbar)
             .modifier(FullScreenGlassToolbar())
             .navigationTitle(store.title)
             .navigationSubtitle(store.route.title)

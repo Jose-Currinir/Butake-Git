@@ -9,11 +9,14 @@ import AppKit
         default: nil
         }
     }
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var workspace = WorkspaceStore()
+    /// The window's `.task` runs again each time it is reopened; app-level startup must happen once.
+    @State private var launched = false
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("notchEnabled") private var notchEnabled = true
     var body: some Scene {
-        WindowGroup {
+        Window("Butake Git", id: MainWindow.id) {
             WorkspaceView(store: workspace)
                 .tint(Brand.accent)
                 // Applied through AppKit: `preferredColorScheme(nil)` does not fully revert after an explicit
@@ -21,7 +24,10 @@ import AppKit
                 .onChange(of: appearance, initial: true) { _, value in ButakeGitApp.apply(appearance: value) }
                 .onChange(of: notchEnabled) { _, _ in NotchController.shared.update() }
                 .frame(minWidth: 850, minHeight: 580)
+                .modifier(MainWindowOpener())
                 .task {
+                    guard !launched else { return }
+                    launched = true
                     await workspace.loadCapabilities()
                     NotchController.shared.start(store: workspace)
                     workspace.startAutoFetch()

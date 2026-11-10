@@ -240,6 +240,5 @@ private struct QuickNewBranchView: View {
 }
 
 @MainActor private func bringMainWindow() {
-    NSApp.activate()
-    NSApp.windows.first { $0.frame.width > 800 }?.makeKeyAndOrderFront(nil)
+    MainWindow.show()
 }

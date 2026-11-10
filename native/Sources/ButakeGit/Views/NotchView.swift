@@ -278,8 +278,7 @@ struct NotchView: View {
         NotchQuickPanel.shared.show(.confirm(PendingOperationSnapshot(action: action, title: operation.title, preview: operation.preview, detail: operation.detail, destructive: operation.destructive)), store: store)
     }
     private func activate() {
-        NSApp.activate()
-        NSApp.windows.first { $0.frame.width > 800 }?.makeKeyAndOrderFront(nil)
+        MainWindow.show()
         NotchController.shared.setExpanded(false)
     }
 }

@@ -1,5 +1,12 @@
 # Cambios
 
+## 1.0.1 · 2026-11-10
+
+- Instalador firmado con Developer ID de Butake SpA y notarizado por Apple: abre sin advertencias.
+- Al cerrar la ventana, la app sigue en el notch y vuelve a abrirse desde el Dock o con «Abrir»
+  del notch (antes quedaba en uso sin ventana).
+- El buscador de la barra ya no queda partido sobre el panel «Detalle del commit».
+
 ## 1.0.0 · 2026-11-10
 
 Primera versión pública.
