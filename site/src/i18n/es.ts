@@ -15,6 +15,42 @@ export const t = {
     requisitos: 'macOS 14 o superior · Mac con Apple Silicon',
     imagen: 'Historial con grafo de ramas y detalle del commit',
   },
+  rotulos: { recorrido: 'La app', porque: 'Por qué', areas: 'Funciones', seguridad: 'Seguridad', rendimiento: 'Rendimiento', instalar: 'Empezar', faq: 'Preguntas' },
+  menu: { abrir: 'Abrir menú', cerrar: 'Cerrar menú' },
+  recorrido: {
+    titulo: 'Recorre la app',
+    texto: 'Cada sección hecha para que el trabajo de todos los días se sienta claro.',
+    pausar: 'Pausar recorrido',
+    reanudar: 'Reanudar recorrido',
+    pestanas: [
+      { id: 'historial', icono: 'git-commit-line', titulo: 'Historial', texto: 'Grafo de ramas, etiquetas «solo develop» y «copiado», y detalle de cada commit.', imagen: 'historial.png' },
+      { id: 'cambios', icono: 'edit-box-line', titulo: 'Cambios', texto: 'Preparados y sin preparar, diff con sintaxis y compositor de commit.', imagen: 'cambios.png' },
+      { id: 'revisar', icono: 'checkbox-multiple-line', titulo: 'Revisar', texto: 'El revisor para lotes grandes de un agente, carpeta por carpeta.', imagen: 'revisar.png' },
+      { id: 'diff', icono: 'code-s-slash-line', titulo: 'Diff', texto: 'Sólo la parte que cambió, resaltada dentro de la línea.', imagen: 'diff.png' },
+      { id: 'sincronizar', icono: 'arrow-left-right-line', titulo: 'Sincronizar', texto: 'Qué falta en main y en develop, comparado por contenido.', imagen: 'sincronizar.png' },
+      { id: 'pr', icono: 'git-pull-request-line', titulo: 'Pull requests', texto: 'Checks, revisores y comentarios en línea en una sola vista.', imagen: 'pull-request.png' },
+    ],
+  },
+  faq: {
+    titulo: 'Preguntas frecuentes',
+    items: [
+      { p: '¿Es gratis?', r: 'Sí. Butake Git es de código abierto bajo licencia Apache 2.0. Puedes usarlo, estudiarlo y proponer mejoras.' },
+      { p: '¿En qué Mac funciona?', r: 'En Mac con Apple Silicon y macOS 14 o superior. La versión para Intel todavía no está disponible.' },
+      { p: '¿Por qué macOS pide confirmar al abrirla?', r: 'Porque esta versión aún no está firmada con un certificado Developer ID de Apple. Ve a Ajustes del Sistema › Privacidad y seguridad › «Abrir igualmente». Estamos preparando la versión firmada y notarizada.' },
+      { p: '¿Dónde quedan mis tokens de GitHub o Bitbucket?', r: 'Sólo en el llavero de macOS. Nunca en el repositorio, en registros ni en preferencias. Git sigue usando tu SSH Agent y tu gestor de credenciales.' },
+      { p: '¿Reemplaza a Git?', r: 'No. Usa el Git que ya tienes instalado, con tus hooks y tu configuración. Butake Git lo hace más claro y agrega protecciones.' },
+      { p: '¿Puedo contribuir?', r: 'Sí: haz un fork y abre un pull request hacia develop. El equipo lo revisa antes de integrarlo. Para cambios grandes, abre antes un issue.' },
+    ],
+  },
+  cierre: {
+    titulo: 'Tu próximo commit, más claro',
+    texto: 'Descarga Butake Git y revisa, intercambia y publica con confianza.',
+  },
+  pieColumnas: [
+    { titulo: 'Producto', enlaces: [['Funciones', '#funciones'], ['Seguridad', '#seguridad'], ['Rendimiento', '#rendimiento'], ['Instalar', '#instalar']] },
+    { titulo: 'Recursos', enlaces: [['Versiones', '/releases'], ['Cambios', '/blob/develop/CHANGELOG.md'], ['Documentación', '/tree/develop/docs'], ['Seguridad', '/security']] },
+    { titulo: 'Proyecto', enlaces: [['Código', ''], ['Contribuir', '/blob/develop/CONTRIBUTING.md'], ['Licencia', '/blob/develop/LICENSE'], ['Reportar un problema', '/issues/new']] },
+  ],
   porque: {
     titulo: 'Hecho para el ritmo de hoy',
     texto: 'Los clientes Git se diseñaron para cambios a mano. Un agente de IA puede tocar 1.200 archivos en minutos, y muchos equipos trabajan main y develop en paralelo.',

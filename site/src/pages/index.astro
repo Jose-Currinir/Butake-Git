@@ -62,10 +62,20 @@ const jsonLd = {
         <a href={repo}><Icon name="github-fill" size={18} /> <span>{t.nav.github}</span></a>
       </nav>
       <a class="boton boton-primario boton-chico" href={descarga}><Icon name="download-2-line" size={18} /> {t.nav.descargar}</a>
+      <button class="menu-boton" type="button" aria-expanded="false" aria-controls="menu-movil" aria-label={t.menu.abrir} data-abrir={t.menu.abrir} data-cerrar={t.menu.cerrar}>
+        <span></span><span></span>
+      </button>
     </div>
+    <nav id="menu-movil" class="menu-movil" aria-label="Principal" hidden>
+      <a href="#funciones">{t.nav.funciones}</a>
+      <a href="#seguridad">{t.nav.seguridad}</a>
+      <a href="#instalar">{t.nav.instalar}</a>
+      <a href={repo}><Icon name="github-fill" size={18} /> {t.nav.github}</a>
+    </nav>
   </header>
 
   <main id="contenido" class="marco">
+    <div class="puntos" aria-hidden="true"></div>
     <section class="hero contenedor">
       <div class="hero-texto-bloque">
         <p class="pastilla entrada" style="--i:0"><span class="punto punto-exito" aria-hidden="true"></span>{t.hero.etiqueta}</p>
@@ -91,16 +101,35 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="contenedor escena-seccion">
+    <section class="seccion contenedor recorrido" aria-labelledby="recorrido">
+      <div class="encabezado revelar">
+        <p class="rotulo">{t.rotulos.recorrido}</p>
+        <h2 id="recorrido">{t.recorrido.titulo}</h2>
+        <p>{t.recorrido.texto}</p>
+      </div>
+      <div class="pestanas revelar" role="tablist" aria-label={t.recorrido.titulo}>
+        {t.recorrido.pestanas.map((p, i) => (
+          <button class="pestana" type="button" role="tab" id={`tab-${p.id}`} aria-controls={`panel-${p.id}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1}>
+            <Icon name={p.icono} size={18} /> <span>{p.titulo}</span><i class="avance" aria-hidden="true"></i>
+          </button>
+        ))}
+        <button class="pausa" type="button" aria-label={t.recorrido.pausar} data-pausar={t.recorrido.pausar} data-reanudar={t.recorrido.reanudar}><Icon name="pause-line" size={16} /></button>
+      </div>
       <div class="escena revelar">
-        <figure class="captura captura-hero ampliable">
-          <img src={img('historial.png')} alt={t.hero.imagen} width="1600" height="965" fetchpriority="high" />
-        </figure>
+        <div class="vitrina vitrina-grande">
+          {t.recorrido.pestanas.map((p, i) => (
+            <figure class:list={['panel captura ampliable', { activo: i === 0 }]} id={`panel-${p.id}`} role="tabpanel" aria-labelledby={`tab-${p.id}`} hidden={i !== 0}>
+              <img src={img(p.imagen)} alt={`${p.titulo}: ${p.texto}`} width="1600" height="965" loading={i === 0 ? 'eager' : 'lazy'} />
+            </figure>
+          ))}
+        </div>
+        <p class="pie-panel" aria-live="polite">{t.recorrido.pestanas[0].texto}</p>
       </div>
     </section>
 
     <section class="seccion contenedor" aria-labelledby="porque">
       <div class="encabezado revelar">
+        <p class="rotulo">{t.rotulos.porque}</p>
         <h2 id="porque">{t.porque.titulo}</h2>
         <p>{t.porque.texto}</p>
       </div>
@@ -126,15 +155,18 @@ const jsonLd = {
               {funcion.puntos.map((punto) => <li><Icon name="check-line" size={18} /> {punto}</li>)}
             </ul>
           </div>
-          <figure class="captura ampliable revelar revelar-tarde">
-            <img src={img(funcion.imagen)} alt={funcion.alt} loading="lazy" width="1600" height="965" />
-          </figure>
+          <div class="vitrina revelar revelar-tarde">
+            <figure class="captura ampliable">
+              <img src={img(funcion.imagen)} alt={funcion.alt} loading="lazy" width="1600" height="965" />
+            </figure>
+          </div>
         </article>
       ))}
     </section>
 
     <section class="seccion contenedor" aria-labelledby="areas">
       <div class="encabezado revelar">
+        <p class="rotulo">{t.rotulos.areas}</p>
         <h2 id="areas">{t.areas.titulo}</h2>
         <p>{t.areas.texto}</p>
       </div>
@@ -160,6 +192,7 @@ const jsonLd = {
 
     <section id="seguridad" class="seccion contenedor dos-columnas" aria-labelledby="seguridad-titulo">
       <div class="revelar">
+        <p class="rotulo">{t.rotulos.seguridad}</p>
         <h2 id="seguridad-titulo">{t.seguridad.titulo}</h2>
         <p class="texto-suave">{t.seguridad.texto}</p>
       </div>
@@ -170,8 +203,8 @@ const jsonLd = {
       </ul>
     </section>
 
-    <section class="seccion contenedor" aria-labelledby="rendimiento">
-      <div class="encabezado revelar"><h2 id="rendimiento">{t.rendimiento.titulo}</h2></div>
+    <section id="rendimiento" class="seccion contenedor" aria-labelledby="rendimiento-titulo">
+      <div class="encabezado revelar"><p class="rotulo">{t.rotulos.rendimiento}</p><h2 id="rendimiento-titulo">{t.rendimiento.titulo}</h2></div>
       <dl class="cifras">
         {t.rendimiento.datos.map((dato) => (
           <div class="cifra revelar brillo"><dt>{dato.texto}</dt><dd data-cifra={dato.valor}>{dato.valor}</dd></div>
@@ -181,7 +214,7 @@ const jsonLd = {
     </section>
 
     <section id="instalar" class="seccion contenedor" aria-labelledby="instalar-titulo">
-      <div class="encabezado revelar"><h2 id="instalar-titulo">{t.instalar.titulo}</h2></div>
+      <div class="encabezado revelar"><p class="rotulo">{t.rotulos.instalar}</p><h2 id="instalar-titulo">{t.instalar.titulo}</h2></div>
       <ol class="pasos" role="list">
         {t.instalar.pasos.map((paso, indice) => (
           <li class="paso revelar brillo"><span class="numero">{indice + 1}</span><h3>{paso.titulo}</h3><p>{paso.texto}</p></li>
@@ -198,18 +231,49 @@ const jsonLd = {
       </div>
     </section>
 
-    <section class="seccion contenedor llamado revelar" aria-labelledby="contribuir">
-      <h2 id="contribuir">{t.contribuir.titulo}</h2>
-      <p>{t.contribuir.texto}</p>
-      <a class="boton boton-secundario" href={`${repo}/blob/develop/CONTRIBUTING.md`}><Icon name="git-pull-request-line" size={20} /> {t.contribuir.boton}</a>
+    <section id="preguntas" class="seccion contenedor faq" aria-labelledby="faq-titulo">
+      <div class="encabezado revelar"><p class="rotulo">{t.rotulos.faq}</p><h2 id="faq-titulo">{t.faq.titulo}</h2></div>
+      <div class="faq-lista">
+        {t.faq.items.map((item) => (
+          <details class="pregunta revelar">
+            <summary>{item.p}<Icon name="add-line" size={20} /></summary>
+            <p>{item.r}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+
+    <section class="seccion contenedor" aria-labelledby="cierre">
+      <div class="cierre revelar">
+        <img src={img('logo.png')} alt="" width="56" height="56" />
+        <h2 id="cierre">{t.cierre.titulo}</h2>
+        <p>{t.cierre.texto}</p>
+        <div class="acciones">
+          <a class="boton boton-invertido" href={descarga}><Icon name="apple-fill" size={20} /> {t.hero.descargar}</a>
+          <a class="boton boton-fantasma" href={repo}><Icon name="github-fill" size={20} /> {t.hero.github}</a>
+        </div>
+        <p class="requisitos">{t.hero.requisitos}</p>
+      </div>
     </section>
   </main>
 
   <footer class="pie">
-    <div class="contenedor pie-interior">
-      <a class="marca" href={`${base}/`}><img src={img('logo.png')} alt="" width="24" height="24" /><span>Butake <strong>Git</strong></span></a>
-      <p>{t.pie.licencia} {t.pie.marca}</p>
-      <p>{t.pie.copyright} · <a href={repo}>GitHub</a> · <a href={`${repo}/blob/develop/LICENSE`}>Licencia</a> · <a href={`${repo}/security`}>Seguridad</a></p>
+    <div class="contenedor pie-rejilla">
+      <div class="pie-marca">
+        <a class="marca" href={`${base}/`}><img src={img('logo.png')} alt="" width="26" height="26" /><span>Butake <strong>Git</strong></span></a>
+        <p>{t.descripcion}</p>
+      </div>
+      {t.pieColumnas.map((columna) => (
+        <div class="pie-columna">
+          <h3>{columna.titulo}</h3>
+          <ul role="list">
+            {columna.enlaces.map(([texto, destino]) => <li><a href={destino.startsWith('#') ? destino : `${repo}${destino}`}>{texto}</a></li>)}
+          </ul>
+        </div>
+      ))}
+    </div>
+    <div class="contenedor pie-legal">
+      <p>{t.pie.copyright} · {t.pie.licencia} {t.pie.marca}</p>
       <a class="arriba" href="#contenido"><Icon name="arrow-up-line" size={16} /> Volver arriba</a>
     </div>
   </footer>
@@ -302,6 +366,59 @@ const jsonLd = {
       i.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') { e.preventDefault(); abrir() } })
     })
     visor.addEventListener('click', (e) => { if (e.target === visor || (e.target as HTMLElement).closest('.visor-cerrar')) visor.close() })
+
+    // Recorrido por pestañas: avance automático, teclado y pausa.
+    const pestanas = [...document.querySelectorAll('.pestana')] as HTMLButtonElement[]
+    const paneles = [...document.querySelectorAll('.panel')] as HTMLElement[]
+    const piePanel = document.querySelector('.pie-panel') as HTMLElement
+    const textos = paneles.map((p) => (p.querySelector('img') as HTMLImageElement).alt.split(': ').slice(1).join(': '))
+    const pausa = document.querySelector('.pausa') as HTMLButtonElement
+    let actual = 0, temporizador = 0, pausado = reducido, enVista = false
+    const DURACION = 6500
+    const mostrar = (i: number, foco = false) => {
+      actual = (i + pestanas.length) % pestanas.length
+      pestanas.forEach((b, j) => { b.setAttribute('aria-selected', String(j === actual)); b.tabIndex = j === actual ? 0 : -1; b.classList.remove('corriendo') })
+      paneles.forEach((p, j) => { if (j === actual) { p.hidden = false; requestAnimationFrame(() => p.classList.add('activo')) } else { p.classList.remove('activo'); p.hidden = true } })
+      piePanel.textContent = textos[actual]
+      if (foco) pestanas[actual].focus()
+      programar()
+    }
+    const programar = () => {
+      clearTimeout(temporizador)
+      const b = pestanas[actual]
+      b.classList.remove('corriendo'); void b.offsetWidth
+      if (pausado || !enVista) return
+      b.style.setProperty('--duracion', `${DURACION}ms`); b.classList.add('corriendo')
+      temporizador = window.setTimeout(() => mostrar(actual + 1), DURACION)
+    }
+    pestanas.forEach((b, i) => {
+      b.addEventListener('click', () => mostrar(i))
+      b.addEventListener('keydown', (e) => {
+        const k = (e as KeyboardEvent).key
+        if (k === 'ArrowRight' || k === 'ArrowLeft') { e.preventDefault(); mostrar(actual + (k === 'ArrowRight' ? 1 : -1), true) }
+        if (k === 'Home') { e.preventDefault(); mostrar(0, true) }
+        if (k === 'End') { e.preventDefault(); mostrar(pestanas.length - 1, true) }
+      })
+    })
+    const ponerPausa = (valor: boolean) => {
+      pausado = valor; pausa.setAttribute('aria-label', valor ? pausa.dataset.reanudar! : pausa.dataset.pausar!); pausa.classList.toggle('en-pausa', valor); programar()
+    }
+    pausa.addEventListener('click', () => ponerPausa(!pausado))
+    if (reducido) ponerPausa(true)
+    const zona = document.querySelector('.recorrido') as HTMLElement
+    new IntersectionObserver(([entrada]) => { enVista = entrada.isIntersecting; programar() }, { threshold: 0.35 }).observe(zona)
+
+    // Menú en teléfono.
+    const menuBoton = document.querySelector('.menu-boton') as HTMLButtonElement
+    const menuMovil = document.getElementById('menu-movil') as HTMLElement
+    const cerrarMenu = () => { menuMovil.hidden = true; menuBoton.setAttribute('aria-expanded', 'false'); menuBoton.setAttribute('aria-label', menuBoton.dataset.abrir!); document.body.classList.remove('menu-abierto') }
+    menuBoton.addEventListener('click', () => {
+      const abrir = menuMovil.hidden
+      menuMovil.hidden = !abrir; menuBoton.setAttribute('aria-expanded', String(abrir)); menuBoton.setAttribute('aria-label', abrir ? menuBoton.dataset.cerrar! : menuBoton.dataset.abrir!)
+      document.body.classList.toggle('menu-abierto', abrir)
+    })
+    menuMovil.querySelectorAll('a').forEach((a) => a.addEventListener('click', cerrarMenu))
+    addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Escape' && !menuMovil.hidden) { cerrarMenu(); menuBoton.focus() } })
   </script>
 </body>
 </html>
