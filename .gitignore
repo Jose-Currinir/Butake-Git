@@ -11,3 +11,6 @@ build/
 
 # Notas internas de desarrollo (no se publican)
 internal/
+
+# Herramientas locales del editor
+.claude/

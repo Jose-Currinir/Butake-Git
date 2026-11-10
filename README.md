@@ -12,6 +12,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Jose-Currinir/Butake-Git/releases/latest/download/Butake-Git.dmg"><b>⬇︎ Descargar para Mac</b></a> ·
+  <a href="https://jose-currinir.github.io/Butake-Git/"><b>Sitio web</b></a>
+</p>
+
+<p align="center">
   <a href="#-por-qué-butake-git">Por qué</a> ·
   <a href="#-recorrido">Recorrido</a> ·
   <a href="#-seguridad">Seguridad</a> ·
@@ -176,7 +181,9 @@ Cada control relevante tiene un identificador de accesibilidad estable (`toolbar
 
 ## 📦 Instalar
 
-Requisitos: macOS 14 o superior, Xcode Command Line Tools (Swift 6), Rust estable y Git.
+**Descarga directa:** [Butake-Git.dmg](https://github.com/Jose-Currinir/Butake-Git/releases/latest/download/Butake-Git.dmg) (Mac con Apple Silicon, macOS 14+). Abre el `.dmg` y arrastra la app a Aplicaciones. Como aún no está firmada con Developer ID, la primera vez macOS pide confirmar en **Ajustes del Sistema › Privacidad y seguridad › «Abrir igualmente»**.
+
+**Desde el código:** requiere Xcode Command Line Tools (Swift 6), Rust estable y Git.
 
 ```sh
 git clone https://github.com/Jose-Currinir/Butake-Git.git
@@ -184,7 +191,7 @@ cd Butake-Git
 ./scripts/install-native.sh   # compila e instala en /Applications
 ```
 
-Otros comandos: `./scripts/run-native.sh` (abrir sin instalar) y `./scripts/test-native.sh` (pruebas). Arquitectura, rendimiento y límites conocidos: [docs/desarrollo.md](docs/desarrollo.md).
+Otros comandos: `./scripts/run-native.sh` (abrir sin instalar), `./scripts/test-native.sh` (pruebas) y `./scripts/package-dmg.sh` (instalador). Arquitectura, rendimiento y límites conocidos: [docs/desarrollo.md](docs/desarrollo.md).
 
 ```
 SwiftUI / AppKit  ──JSON──▶  motor Rust  ──argumentos──▶  Git instalado
