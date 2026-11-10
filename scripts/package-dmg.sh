@@ -15,5 +15,5 @@ ditto "$APP" "$STAGE/Butake Git.app"
 ln -s /Applications "$STAGE/Aplicaciones"
 hdiutil create -volname "Butake Git $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$OUT" >/dev/null
 rm -rf "$STAGE"
-shasum -a 256 "$OUT" | tee "$OUT.sha256"
+(cd build && shasum -a 256 Butake-Git.dmg | tee Butake-Git.dmg.sha256)
 echo "$OUT ($(du -h "$OUT" | cut -f1)) · versión $VERSION · $(lipo -archs "$APP/Contents/MacOS/ButakeGit")"
