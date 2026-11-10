@@ -50,7 +50,7 @@ struct RepositoryToolsView: View {
             Label(L(key + "_title"), systemImage: store.route.icon)
         } description: { Text(L(key + "_detail")) } actions: {
             switch store.route {
-            case .stash: Button(L("stashSave")) { store.action("stash") }.disabled(!store.canWrite || store.repository?.files.isEmpty != false)
+            case .stash: Button(L("stashSave")) { store.action("stash") }.disabled(!store.canWrite || store.files.isEmpty != false)
             case .tags: Button(L("newTag")) { form = ToolForm(kind: "tag", title: L("newTag"), command: "tag") }.disabled(!store.canWrite)
             case .remotes:
                 Button(L("publishRepository") + "…") { store.publishingRepository = true }.buttonStyle(.borderedProminent).accessibilityIdentifier("remotes.publish")

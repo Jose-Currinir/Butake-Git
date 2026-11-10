@@ -4,6 +4,7 @@ import AppKit
 struct WorkspaceView: View {
     @Bindable var store: WorkspaceStore
     @State private var rebaseSheet = false
+    @State private var updates = UpdateService.shared
     var body: some View {
         NavigationSplitView {
             SidebarView(store: store)
@@ -19,11 +20,8 @@ struct WorkspaceView: View {
             .animation(.smooth(duration: 0.25), value: store.repository?.operation)
             // The system toolbar background overhangs the split divider by ~3 pt and draws a step against
             // the content edge; without it the title sits on the window background and only the glass items remain.
-            // With the inspector open the search field spans both columns; a visible background keeps it on one surface.
-            .toolbarBackground(store.showInspector ? .visible : .hidden, for: .windowToolbar)
+            .toolbarBackground(.hidden, for: .windowToolbar)
             .modifier(FullScreenGlassToolbar())
-            .navigationTitle(store.title)
-            .navigationSubtitle(store.route.title)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.action("fetch") } label: { Label(L("fetch"), systemImage: "arrow.down.to.line").symbolEffect(.pulse, isActive: store.runningAction == "fetch") }
@@ -47,7 +45,10 @@ struct WorkspaceView: View {
                     Button { store.showInspector.toggle() } label: { Label(L("inspector"), systemImage: "sidebar.right") }.accessibilityIdentifier("toolbar.inspector")
                 }
             }
-            .inspector(isPresented: $store.showInspector) { Group { if store.route == .changes { FileInspector(store: store) } else { CommitInspector(store: store) } }.inspectorColumnWidth(min: 245, ideal: 285, max: 420) }
+            .inspector(isPresented: $store.showInspector) { InspectorContent(store: store).inspectorColumnWidth(min: 245, ideal: 285, max: 420) }
+            // With the inspector open the search field spans both columns. The system toolbar background
+            // overhangs the sidebar divider by ~3 pt, so the bar surface is drawn here, flush with the column.
+            .overlay { if store.showInspector { ToolbarStrip().transition(.opacity) } }
         }
         .sheet(item: $store.pending) { operation in OperationConfirmation(store: store, operation: operation) }
         .sheet(item: $store.diffRequest) { request in QueryDiffSheet(store: store, request: request) }
@@ -60,6 +61,7 @@ struct WorkspaceView: View {
         .sheet(isPresented: $store.publishingRepository) { PublishRepositorySheet(store: store) }
         .sheet(item: Binding(get: { store.renamingBranch.map { BranchName(name: $0) } }, set: { store.renamingBranch = $0?.name })) { RenameBranchSheet(store: store, original: $0.name) }
         .sheet(isPresented: $rebaseSheet) { RebasePlannerView(store: store) }
+        .sheet(isPresented: $updates.showingSheet) { UpdateSheet(updates: updates) }
         .alert(L("operationFailed"), isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button(L("close"), role: .cancel) { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "").textSelection(.enabled) }
@@ -68,7 +70,6 @@ struct WorkspaceView: View {
             // Picks up edits made in other tools without polling the filesystem.
             if store.repository != nil && !store.busy && !store.terminalActive { Task { await store.refresh() } }
         }
-        .onChange(of: store.route) { _, route in if route != .history && route != .changes { store.showInspector = false } }
         .background(GeometryReader { geometry in Color.clear.onChange(of: geometry.size.width) { _, width in if width < 1120 { store.showInspector = false } } })
     }
 }
@@ -107,6 +108,11 @@ private struct WorkspaceDetail: View {
             .transition(.opacity)
         }
         .searchable(text: $store.search, prompt: L(store.route == .changes || store.route == .review ? "searchChanges" : "searchHistory"))
+        // Route-dependent window chrome lives here, not in WorkspaceView: reading the route there re-evaluated the
+        // whole window (toolbar, sheets, split view) on every section switch.
+        .navigationTitle(store.title)
+        .navigationSubtitle(store.route.title)
+        .onChange(of: store.route) { _, route in if route != .history && route != .changes { store.showInspector = false } }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.smooth(duration: 0.3), value: store.repository == nil)
     }
@@ -148,7 +154,7 @@ private struct SidebarView: View {
             List(selection: selection) {
                 Section(L("repository")) {
                     ForEach([WorkspaceRoute.history, .changes, .review, .files, .branches, .sync, .worktrees, .tags, .stash, .remotes, .reflog]) { route in
-                        Label { HStack { Text(route.title); Spacer(); if route == .changes || route == .review, let count = route == .review ? (store.repository?.files.count ?? 0) - store.reviewedCount : store.repository?.files.count, count > 0 { Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit()).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.accent.opacity(0.14), in: Capsule()).contentTransition(.numericText(value: Double(count))).animation(.snappy, value: count).transition(.scale.combined(with: .opacity)) } } } icon: { Image(systemName: route.icon) }.listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)")
+                        Label { HStack { Text(route.title); Spacer(); if route == .changes || route == .review, case let count = route == .review ? store.files.count - store.reviewedCount : store.files.count, count > 0 { Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit()).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.accent.opacity(0.14), in: Capsule()).countTransition(count).transition(.scale.combined(with: .opacity)) } } } icon: { Image(systemName: route.icon) }.listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)")
                     }
                 }
                 Section(L("collaboration")) { ForEach([WorkspaceRoute.pullRequests, .pipelines, .agents]) { route in Label(route.title, systemImage: route.icon).listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)") } }
@@ -182,7 +188,8 @@ private struct SidebarView: View {
                     }
                 }
             }.listStyle(.sidebar).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize).disabled(store.busy || store.terminalActive)
-            HStack { Spacer(); SettingsLink { Image(systemName: "gearshape").font(.system(size: 13)) }.buttonStyle(.borderless).help(L("settings")) }.padding(.horizontal, 16).padding(.vertical, 10)
+            HStack { VersionBadge(updates: UpdateService.shared); Spacer(); SettingsLink { Image(systemName: "gearshape").font(.system(size: 13)) }.buttonStyle(.borderless).help(L("settings")) }.padding(.horizontal, 16).padding(.vertical, 10)
+                .animation(.snappy, value: UpdateService.shared.updateAvailable)
         }
     }
 }
@@ -651,6 +658,25 @@ struct MainProtectionMenu: View {
 
 /// In full screen AppKit stacks the toolbar above the content, so nothing shows through its glass.
 /// Revealing it on hover lets the content fill the screen and the toolbar float over it, as in a window.
+/// Reads the route itself so only the inspector re-evaluates when the section changes.
+private struct InspectorContent: View {
+    let store: WorkspaceStore
+    var body: some View { if store.route == .changes { FileInspector(store: store) } else { CommitInspector(store: store) } }
+}
+/// Bar material behind the toolbar, covering exactly the detail and inspector columns.
+private struct ToolbarStrip: View {
+    var body: some View {
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                Rectangle().fill(.bar).frame(height: proxy.safeAreaInsets.top)
+                Rectangle().fill(.separator).frame(height: 0.5)
+                Spacer(minLength: 0)
+            }
+            .ignoresSafeArea(edges: .top)
+        }
+        .allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
 private struct FullScreenGlassToolbar: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 15.0, *) { content.windowToolbarFullScreenVisibility(.onHover) } else { content }

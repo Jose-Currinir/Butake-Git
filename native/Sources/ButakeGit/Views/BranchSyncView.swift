@@ -13,7 +13,7 @@ struct BranchSyncView: View {
     @State private var selectedRight: Set<String> = []
     @State private var showEquivalent = false
     private var branchNames: [String] { store.repository?.branches.map(\.name) ?? [] }
-    private var reloadKey: String { "\(left)|\(right)|\(store.repository?.branch ?? "")|\(store.repository?.commits.first?.hash ?? "")|\(store.repository?.files.count ?? 0)" }
+    private var reloadKey: String { "\(left)|\(right)|\(store.repository?.branch ?? "")|\(store.repository?.commits.first?.hash ?? "")|\(store.files.count)" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,7 +69,7 @@ struct BranchSyncView: View {
             // No fixedSize here: a vertically fixed text next to the lists created a layout cycle
             // that stopped the whole window from drawing.
             Text(L("syncExplain") + " " + L("mergesExcluded")).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-            if !(store.repository?.files.isEmpty ?? true) { Label(L("dirtyHint"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) }
+            if !store.files.isEmpty { Label(L("dirtyHint"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) }
         }.padding(16)
     }
 
@@ -188,7 +188,7 @@ private struct SyncColumn: View {
                     Label(String(format: L("copyN"), selected.count, target), systemImage: "arrow.right.doc.on.clipboard").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent).controlSize(.large)
-                .disabled(selected.isEmpty || store.isProtected(target) || store.busy || store.terminalActive || !(store.repository?.files.isEmpty ?? false))
+                .disabled(selected.isEmpty || store.isProtected(target) || store.busy || store.terminalActive || !store.files.isEmpty)
                 .accessibilityIdentifier("sync.copyTo.\(target)")
                 if store.isProtected(target) { Text(String(format: L("targetProtected"), target)).font(.caption2).foregroundStyle(.orange).multilineTextAlignment(.center) }
             }.padding(12)

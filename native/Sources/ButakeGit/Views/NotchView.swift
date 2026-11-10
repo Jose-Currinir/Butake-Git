@@ -126,7 +126,7 @@ struct NotchView: View {
     @State private var hoverTask: Task<Void, Never>?
 
     private var repo: RepositorySnapshot? { store.repository }
-    private var changes: Int { repo?.files.count ?? 0 }
+    private var changes: Int { store.files.count }
     private var incoming: Int { repo?.behind ?? 0 }
     private var outgoing: Int { repo?.ahead ?? 0 }
     private var hasNews: Bool { changes > 0 || incoming > 0 || outgoing > 0 || store.busy }
@@ -265,7 +265,7 @@ struct NotchView: View {
     }
     private var commitsToday: Int {
         let start = Calendar.current.startOfDay(for: Date())
-        let head = store.changes.reachableFromHead
+        let head = store.refs.reachableFromHead
         return (repo?.commits ?? []).filter { $0.date >= start && head.contains($0.hash) }.count
     }
     private var lastFetchText: String {
@@ -288,7 +288,7 @@ private struct NotchStat: View {
     var body: some View {
         VStack(spacing: 3) {
             Text(value).font(.system(size: 17, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(tint)
-                .lineLimit(1).minimumScaleFactor(0.55).contentTransition(.numericText())
+                .lineLimit(1).minimumScaleFactor(0.55).countTransition(Int(value) ?? WorkspaceStore.animationLimit)
             Text(label).font(.system(size: 10)).foregroundStyle(.white.opacity(0.5)).lineLimit(1).minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)

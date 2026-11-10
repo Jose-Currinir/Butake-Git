@@ -744,3 +744,32 @@
 "publishStepRemoteUpdate" = "Usar ese repositorio como origin con la conexión elegida.";
 "notPublished" = "Sin publicar";
 "notPublishedHelp" = "Tiene remoto, pero todavía no se subió ninguna rama. Publicar termina de subirlas.";
+"showRemainingFiles" = "%d archivos más: mostrar todos";
+
+/* Actualizaciones */
+"version" = "Versión";
+"updatesSection" = "Actualizaciones";
+"updateAutomatic" = "Buscar actualizaciones automáticamente";
+"updateCheckNow" = "Buscar actualizaciones";
+"updateCheckMenu" = "Buscar actualizaciones…";
+"updateLastCheck" = "Última comprobación: %@";
+"updateChecking" = "Buscando actualizaciones…";
+"updateUpToDate" = "Tienes la última versión";
+"updateCheckFailed" = "No se pudo consultar GitHub. Revisa tu conexión e inténtalo de nuevo.";
+"updateInstalled" = "Instalada: %@";
+"updateAvailableTitle" = "Butake Git %@ disponible";
+"updateAvailableShort" = "Actualizar a %@";
+"updateAvailableHelp" = "Hay una versión nueva (%1$@). Tienes la %2$@.";
+"updateVerification" = "Antes de instalar se comprueba la suma SHA-256 publicada y la firma Developer ID de Butake SpA notarizada por Apple.";
+"updateViewRelease" = "Ver en GitHub";
+"updateLater" = "Más tarde";
+"updateInstall" = "Instalar y reiniciar";
+"updateDownloading" = "Descargando…";
+"updateVerifying" = "Verificando suma y firma…";
+"updateInstalling" = "Instalando; la app se reiniciará.";
+"updateNoNotes" = "Sin notas de la versión.";
+"updateChecksumMismatch" = "La descarga no coincide con la suma SHA-256 publicada. No se instaló nada.";
+"updateSignatureInvalid" = "El instalador no tiene una firma válida de Butake SpA. No se instaló nada.";
+"updateMountFailed" = "No se pudo abrir el instalador descargado.";
+"updateNoInstaller" = "La versión publicada no incluye un instalador para Mac.";
+"updateNoPermission" = "No hay permiso para reemplazar la app en su carpeta. Se abrió el instalador verificado: arrástralo a Aplicaciones.";

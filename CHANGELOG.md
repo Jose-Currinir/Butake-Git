@@ -1,5 +1,16 @@
 # Cambios
 
+## 1.0.3 · 2026-11-10
+
+- **Actualizaciones:** la versión instalada se ve junto a Ajustes; la app busca versiones nuevas en
+  GitHub (al abrir, cada 6 horas o a pedido) y las instala tras verificar la suma SHA-256 y la firma
+  Developer ID de Butake SpA notarizada por Apple.
+- **Fluidez con agentes de IA:** con miles de cambios y un agente escribiendo sin parar, la app pasa de
+  congelarse 80–120 ms varias veces por segundo a casi 60 fps. Los refrescos que sólo cambian archivos
+  ya no redibujan la ventana completa; contadores sin animación con listas grandes; estadísticas por fila.
+- Listas de Cambios con más de 150 archivos muestran los primeros y un botón para ver todos.
+- La barra superior queda alineada con la columna al abrir el panel de detalle.
+
 ## 1.0.2 · 2026-11-10
 
 - Scroll del historial fluido a 60 fps también con miles de commits (antes ~20–40 fps en

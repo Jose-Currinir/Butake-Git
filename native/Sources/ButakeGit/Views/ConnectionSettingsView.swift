@@ -24,6 +24,7 @@ private struct GeneralSettings: View {
                 Toggle(L("autoFetchToggle"), isOn: $autoFetch)
                 Text(L(NotchGeometry.current() == nil ? "notchUnavailable" : "notchHelp")).font(.caption).foregroundStyle(.secondary)
             }
+            UpdateSettingsSection()
             Section(L("appearance")) {
                 Picker(L("appearance"), selection: $appearance) { Text(L("system")).tag("system"); Text(L("light")).tag("light"); Text(L("dark")).tag("dark") }.pickerStyle(.segmented)
             }

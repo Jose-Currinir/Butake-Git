@@ -114,7 +114,7 @@ private struct QuickCommitView: View {
     private var repo: RepositorySnapshot? { store.repository }
     private var staged: [ChangedFile] { store.changes.staged }
     private var unstaged: [ChangedFile] { store.changes.unstaged.filter { !$0.conflict } }
-    private var files: [ChangedFile] { includeAll ? (repo?.files ?? []).filter { !$0.conflict } : staged }
+    private var files: [ChangedFile] { includeAll ? store.files.filter { !$0.conflict } : staged }
     private var canCommit: Bool { !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !files.isEmpty && !working && store.canWrite }
     private var onPrimary: Bool { repo?.branch == repo?.primary }
     var body: some View {
@@ -123,7 +123,7 @@ private struct QuickCommitView: View {
             if !staged.isEmpty && !unstaged.isEmpty {
                 Picker("", selection: $includeAll) {
                     Text(String(format: L("quickOnlyStaged"), staged.count)).tag(false)
-                    Text(String(format: L("quickAllChanges"), (repo?.files ?? []).count)).tag(true)
+                    Text(String(format: L("quickAllChanges"), store.files.count)).tag(true)
                 }.pickerStyle(.segmented).labelsHidden()
             }
             VStack(alignment: .leading, spacing: 5) {

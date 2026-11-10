@@ -16,7 +16,7 @@ struct FileBrowserView: View {
             if loading { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
             else if !error.isEmpty { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
             else {
-                let changed = Dictionary((store.repository?.files ?? []).map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+                let changed = Dictionary(store.files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
                 List(visible, id: \.self, selection: $selectedPath) { path in
                         let folder = (path as NSString).deletingLastPathComponent
                         HStack(spacing: 12) {

@@ -18,7 +18,7 @@ struct ReviewView: View {
         VStack(spacing: 0) {
             header(files: model.files)
             Divider()
-            if store.repository?.files.isEmpty ?? true {
+            if store.files.isEmpty {
                 ContentUnavailableView(L("clean"), systemImage: "checkmark.circle", description: Text(L("cleanDetail"))).frame(maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
@@ -37,7 +37,7 @@ struct ReviewView: View {
     // MARK: Header: progress and filters
 
     private func header(files: [ChangedFile]) -> some View {
-        let total = store.repository?.files.count ?? 0
+        let total = store.files.count
         let done = store.reviewedCount
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
@@ -54,7 +54,7 @@ struct ReviewView: View {
                     Button(L("collapseAll")) { withAnimation(.snappy) { collapsed = Set(allFolderIDs(store.reviewTree(query: store.search, extensionFilter: extensionFilter, kindFilter: kindFilter, hideReviewed: hideReviewed).nodes)) } }
                     Divider()
                     Button(L("markAllVisible")) { store.setReviewed(files, true) }
-                    Button(L("unmarkAll")) { store.setReviewed(store.repository?.files ?? [], false) }
+                    Button(L("unmarkAll")) { store.setReviewed(store.files, false) }
                 } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(L("more"))
             }
             let summary = store.changeSummary
@@ -129,7 +129,7 @@ struct ReviewView: View {
     // MARK: Detail
 
     @ViewBuilder private func detail(files: [ChangedFile]) -> some View {
-        if let file = store.selectedFile, files.contains(where: { $0.path == file.path }) || store.repository?.files.contains(where: { $0.path == file.path }) == true {
+        if let file = store.selectedFile, files.contains(where: { $0.path == file.path }) || store.files.contains(where: { $0.path == file.path }) == true {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {

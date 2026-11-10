@@ -174,4 +174,23 @@ final class CoreTests: XCTestCase {
         XCTAssertNotNil(parseProviderDate("2026-11-10T12:30:00.123456+00:00"))
         XCTAssertNil(parseProviderDate("ayer"))
     }
+    func testUpdateVersionComparison() {
+        XCTAssertTrue(UpdateService.isNewer("1.0.3", than: "1.0.2"))
+        XCTAssertTrue(UpdateService.isNewer("v1.1", than: "1.0.9"))
+        XCTAssertTrue(UpdateService.isNewer("2.0.0", than: "1.10.0"))
+        XCTAssertFalse(UpdateService.isNewer("1.0.2", than: "1.0.2"))
+        XCTAssertFalse(UpdateService.isNewer("1.0", than: "1.0.0"))
+        XCTAssertFalse(UpdateService.isNewer("1.0.1", than: "1.0.10"))
+    }
+    func testUpdateReleaseParsing() throws {
+        let json = """
+        {"tag_name":"v1.0.3","body":"Notas","html_url":"https://github.com/Jose-Currinir/Butake-Git/releases/tag/v1.0.3","published_at":"2026-11-10T19:16:47Z",
+         "assets":[{"name":"Butake-Git.dmg.sha256","browser_download_url":"https://example.com/a.sha256"},{"name":"Butake-Git.dmg","browser_download_url":"https://example.com/a.dmg"}]}
+        """
+        let release = try UpdateService.parse(Data(json.utf8))
+        XCTAssertEqual(release.version, "1.0.3")
+        XCTAssertEqual(release.dmg.absoluteString, "https://example.com/a.dmg")
+        XCTAssertEqual(release.checksum?.absoluteString, "https://example.com/a.sha256")
+        XCTAssertNotNil(release.published)
+    }
 }

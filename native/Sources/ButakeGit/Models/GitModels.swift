@@ -211,6 +211,12 @@ struct ChangeIndex {
         localBranches = Set(snapshot.branches.map(\.name))
     }
 }
+/// HEAD and branch membership, observed apart from the file lists so file-only refreshes don't touch History.
+struct RefIndex: Equatable {
+    var headHash: String?
+    var reachableFromHead: Set<String> = []
+    var localBranches: Set<String> = []
+}
 struct HistoryModel {
     var commits: [GitCommit]; var graph: CommitGraph
     var rowIndex: [String: Int] = [:]
@@ -311,6 +317,10 @@ enum SyncMark { case onlyMain, onlyDevelop, copied }
 /// Guided recovery after a pull fails; `code` comes from the engine's classification.
 struct PullProblem: Identifiable { var id = UUID(); var code: String; var detail: String }
 struct Toast: Identifiable, Equatable { var id = UUID(); var message: String; var icon: String; var destructive = false }
+@MainActor @Observable final class StatBox {
+    var value: LineStats?
+    init(value: LineStats?) { self.value = value }
+}
 struct LineStats: Equatable {
     var additions: Int?; var deletions: Int?
     var binary: Bool { additions == nil && deletions == nil }

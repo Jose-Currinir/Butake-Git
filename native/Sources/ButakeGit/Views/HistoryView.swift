@@ -12,7 +12,7 @@ struct HistoryView: View {
         let model = store.historyModel(search: store.search, scope: scopedHashes)
         let commits = model.commits
         let graph = model.graph
-        let locals = store.changes.localBranches
+        let locals = store.refs.localBranches
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Menu { Button(L("allBranches")) { scope = "" }; ForEach(store.repository?.branches ?? []) { branch in Button(branch.name) { scope = branch.name } } } label: { Label(scope.isEmpty ? L("allBranches") : scope, systemImage: "line.3.horizontal.decrease") }.menuStyle(.borderlessButton).fixedSize()
@@ -281,7 +281,7 @@ struct CommitInspector: View {
                         }
                         if !body_.isEmpty { Text(body_).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8)) }
                         HStack { Text(commit.hash).font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.accent).lineLimit(1).truncationMode(.middle); Spacer(); CopyIconButton(store: store, text: commit.hash, help: L("copyHash")) }
-                        let refs = CommitReference.parse(commit.refs, localBranches: store.changes.localBranches)
+                        let refs = CommitReference.parse(commit.refs, localBranches: store.refs.localBranches)
                         if !refs.isEmpty { HStack(spacing: 4) { ForEach(refs.prefix(5)) { ref in Button { store.search = ref.name } label: { ReferenceChip(reference: ref) }.buttonStyle(.plain).help(L("filterHistory")) } } }
                         CommitActions(store: store, commit: commit)
                         Divider()
@@ -306,8 +306,8 @@ struct CommitInspector: View {
                         }.animation(.smooth, value: files.map(\.id))
                         Divider()
                         VStack(spacing: 6) {
-                            Button { store.compareWithHead(commit) } label: { Label(commit.hash == store.changes.headHash ? L("compareWorking") : L("compare"), systemImage: "arrow.left.arrow.right").frame(maxWidth: .infinity) }.accessibilityIdentifier("inspector.compare")
-                                .help(commit.hash == store.changes.headHash ? L("compareWorkingHelp") : L("compareHelp"))
+                            Button { store.compareWithHead(commit) } label: { Label(commit.hash == store.refs.headHash ? L("compareWorking") : L("compare"), systemImage: "arrow.left.arrow.right").frame(maxWidth: .infinity) }.accessibilityIdentifier("inspector.compare")
+                                .help(commit.hash == store.refs.headHash ? L("compareWorkingHelp") : L("compareHelp"))
                             Button { store.showCommit(commit.hash, title: commit.subject) } label: { Label(L("viewCommit"), systemImage: "doc.text.magnifyingglass").frame(maxWidth: .infinity) }.accessibilityIdentifier("inspector.viewCommit")
                         }.controlSize(.regular)
                     }
@@ -379,11 +379,13 @@ struct StatsBadge: View {
         HStack(spacing: 4) {
             if stats.binary { Text(L("binary")).foregroundStyle(.secondary) }
             else {
-                if let additions = stats.additions, additions > 0 { Text("+\(additions)").foregroundStyle(Brand.accent).contentTransition(.numericText(value: Double(additions))) }
-                if let deletions = stats.deletions, deletions > 0 { Text("−\(deletions)").foregroundStyle(.red).contentTransition(.numericText(value: Double(deletions))) }
+                // No numeric transition or tooltip: this badge sits in every changed-file row and its numbers move
+                // with each write of an agent; animated digits are rasterized on the main thread.
+                if let additions = stats.additions, additions > 0 { Text("+\(additions)").foregroundStyle(Brand.accent) }
+                if let deletions = stats.deletions, deletions > 0 { Text("−\(deletions)").foregroundStyle(.red) }
             }
         }.font(.system(size: 9, weight: .semibold, design: .monospaced)).fixedSize()
-        .help(description).accessibilityElement(children: .ignore).accessibilityLabel(description)
+        .accessibilityElement(children: .ignore).accessibilityLabel(description)
     }
     private var description: String { stats.binary ? L("binary") : String(format: L("linesChanged"), stats.additions ?? 0, stats.deletions ?? 0) }
 }
@@ -393,8 +395,8 @@ private struct CommitActions: View {
     @State private var naming = false
     @State private var copied = false
     var body: some View {
-        let inHead = store.changes.reachableFromHead.contains(commit.hash)
-        let isHead = commit.hash == store.changes.headHash
+        let inHead = store.refs.reachableFromHead.contains(commit.hash)
+        let isHead = commit.hash == store.refs.headHash
         let isMerge = commit.parents.count > 1
         let readOnly = !store.canWrite
         VStack(alignment: .leading, spacing: 6) {
@@ -525,9 +527,9 @@ private struct CommitContextMenu: View {
             Button(L("copyHash")) { store.copyToPasteboard(commit.hash) }
             Button(L("copySubject")) { store.copyToPasteboard(commit.subject) }
             Button(L("viewCommit")) { store.showCommit(commit.hash, title: commit.subject) }
-            Button(commit.hash == store.changes.headHash ? L("compareWorking") : L("compare")) { store.compareWithHead(commit) }
+            Button(commit.hash == store.refs.headHash ? L("compareWorking") : L("compare")) { store.compareWithHead(commit) }
             Divider()
-            let inHead = store.changes.reachableFromHead.contains(commit.hash)
+            let inHead = store.refs.reachableFromHead.contains(commit.hash)
             Button(L("cherry_pick")) { store.action("cherry_pick", value: commit.hash, confirm: true) }.disabled(!store.canWrite || inHead)
             Button(L("revert")) { store.action("revert", value: commit.hash, confirm: true) }.disabled(!store.canWrite || !inHead || commit.parents.count > 1)
             Menu("Reset") { ForEach(["soft", "mixed", "hard"], id: \.self) { mode in Button("Reset --\(mode)…") { Task { await store.prepare("reset", arguments: "--\(mode) \(commit.hash)") } }.disabled(!store.canWrite) } }
@@ -571,5 +573,14 @@ struct ChangeKindBadge: View {
             }
         }
         .help(kind.title).accessibilityLabel(kind.title).fixedSize()
+    }
+}
+
+extension View {
+    /// Animated digits only for small counts. Counters driven by an agent's writes change several times per second
+    /// with thousands of files; their transitions were rasterized on the main thread and made the app stutter.
+    @ViewBuilder func countTransition(_ count: Int) -> some View {
+        if count < WorkspaceStore.animationLimit { contentTransition(.numericText(value: Double(count))).animation(.snappy, value: count) }
+        else { contentTransition(.identity) }
     }
 }

@@ -31,6 +31,7 @@ import AppKit
                     await workspace.loadCapabilities()
                     NotchController.shared.start(store: workspace)
                     workspace.startAutoFetch()
+                    UpdateService.shared.startAutomaticChecks()
                     let args = ProcessInfo.processInfo.arguments
                     if let index = args.firstIndex(of: "--repository"), args.indices.contains(index + 1) { await workspace.open(args[index + 1]) }
                     #if DEBUG || BUTAKE_QA
@@ -41,6 +42,9 @@ import AppKit
         .defaultSize(width: 1450, height: 920)
         .windowToolbarStyle(.unifiedCompact)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button(L("updateCheckMenu")) { Task { await UpdateService.shared.check(userInitiated: true) } }
+            }
             CommandGroup(replacing: .newItem) {
                 Button(L("newRepository") + "…") { workspace.creatingRepository = true }.keyboardShortcut("n")
                 Button(L("openRepository"), action: workspace.chooseRepository).keyboardShortcut("o")

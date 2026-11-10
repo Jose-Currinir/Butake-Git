@@ -19,7 +19,9 @@ import QuartzCore
 
     func run(label: String, frames: Int = 480, pointsPerFrame: CGFloat = 36, completion: @escaping () -> Void) {
         guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }), let content = window.contentView,
-              let target = ScrollBenchmark.scrollViews(in: content).max(by: { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }) else {
+              // The visible list under the middle of the detail area (hidden panes stay mounted but don't hit-test).
+              let target = (content.hitTest(NSPoint(x: content.bounds.width * 0.42, y: content.bounds.height * 0.5))?.enclosingScrollView)
+                ?? ScrollBenchmark.scrollViews(in: content).max(by: { ($0.documentView?.frame.height ?? 0) < ($1.documentView?.frame.height ?? 0) }) else {
             NSLog("BUTAKE_QA scroll label=%@ error=no-scroll-view", label); completion(); return
         }
         self.label = label; scroll = target; stalls = []; remaining = frames; speed = pointsPerFrame; deltas = []; last = 0; direction = 1; self.completion = completion

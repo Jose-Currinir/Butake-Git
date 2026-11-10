@@ -6,12 +6,38 @@ import QuartzCore
 @MainActor @Observable final class WorkspaceStore {
     let engine = GitEngine()
     let catalog = CatalogStore()
+    /// The snapshot is stored outside Observation so a files-only refresh can update it without notifying every
+    /// view that reads `repository` (sidebar, toolbar, history…): during an agent's burst that re-rendered the whole
+    /// window each time (~70 ms). Views that show files observe `files` and `changes` instead.
+    @ObservationIgnored private var storedRepository: RepositorySnapshot?
     var repository: RepositorySnapshot? {
-        didSet { if repository != oldValue { changes = repository.map(ChangeIndex.init) ?? ChangeIndex(); revision &+= 1 } }
+        get { access(keyPath: \.repository); return storedRepository }
+        set {
+            let changed = newValue != storedRepository
+            withMutation(keyPath: \.repository) { storedRepository = newValue }
+            if changed { revision &+= 1; applyDerived(newValue) }
+        }
+    }
+    /// Changed files of the current snapshot (observed separately from `repository`).
+    private(set) var files: [ChangedFile] = []
+    private(set) var refs = RefIndex()
+    private func applyDerived(_ snapshot: RepositorySnapshot?) {
+        if files != (snapshot?.files ?? []) { files = snapshot?.files ?? [] }
+        changes = snapshot.map(ChangeIndex.init) ?? ChangeIndex(); filesRevision &+= 1
+        let nextRefs = RefIndex(headHash: changes.headHash, reachableFromHead: changes.reachableFromHead, localBranches: changes.localBranches)
+        if nextRefs != refs { refs = nextRefs }
+    }
+    /// True when `next` differs from the current snapshot only in its changed files.
+    private func onlyFilesDiffer(_ next: RepositorySnapshot) -> Bool {
+        guard var probe = storedRepository else { return false }
+        probe.files = next.files
+        return probe == next
     }
     /// Cached derivations of `repository`; read these from views instead of recomputing.
     private(set) var changes = ChangeIndex()
     @ObservationIgnored private var revision = 0
+    /// Bumped whenever the changed files change (including file-only refreshes); keys the file-derived caches.
+    @ObservationIgnored private var filesRevision = 0
     @ObservationIgnored private var historyCache: (key: String, model: HistoryModel)?
     @ObservationIgnored private var refreshInFlight = false
     @ObservationIgnored private var refreshQueued = false
@@ -36,7 +62,7 @@ import QuartzCore
     /// Entering Changes or Review with nothing selected opens the first relevant diff instead of an empty pane.
     func autoSelectFile() {
         guard selectedFile == nil, route == .changes || route == .review else { return }
-        if route == .review, let file = (repository?.files ?? []).sorted(by: { $0.path < $1.path }).first(where: { !isReviewed($0) && !$0.conflict }) { reviewSelect(file); return }
+        if route == .review, let file = files.sorted(by: { $0.path < $1.path }).first(where: { !isReviewed($0) && !$0.conflict }) { reviewSelect(file); return }
         if let file = changes.unstaged.first(where: { !$0.conflict }) { selectFile(file, staged: false) }
         else if let file = changes.staged.first { selectFile(file, staged: true) }
     }
@@ -63,7 +89,7 @@ import QuartzCore
     var pullProblem: PullProblem?
     var organizing = false
     /// Reviewer state: path -> content fingerprint at the time it was marked reviewed.
-    var reviewed: [String: String] = [:] { didSet { scheduleReviewSave() } }
+    var reviewed: [String: String] = [:] { didSet { scheduleReviewSave(); updateReviewedCount() } }
     /// path -> "status|size|mtime", recomputed on every refresh so further edits by an agent reset the mark.
     private(set) var fingerprints: [String: String] = [:]
     @ObservationIgnored private var reviewSaveTask: Task<Void, Never>?
@@ -79,6 +105,17 @@ import QuartzCore
     var historyLimit = WorkspaceStore.historyPage
     var loadingHistory = false
     var fileStats: [String: LineStats] = [:]
+    @ObservationIgnored private var lastStatsLoad = Date.distantPast
+    /// One observable cell per file and side. Rows read their own cell instead of `fileStats`: a row depending on
+    /// the whole dictionary made SwiftUI compare thousands of entries per visible row on every stats reload.
+    @ObservationIgnored private var statBoxes: [String: StatBox] = [:]
+    func statBox(_ file: ChangedFile, staged: Bool) -> StatBox {
+        let key = LineStats.key(file.path, staged: staged)
+        if let box = statBoxes[key] { return box }
+        let box = StatBox(value: fileStats[key]); statBoxes[key] = box
+        return box
+    }
+    @ObservationIgnored private var statsRetry: Task<Void, Never>?
     static let historyPage = 180
     private var toastTask: Task<Void, Never>?
     private var diffGeneration = UUID()
@@ -178,7 +215,7 @@ import QuartzCore
                 UserDefaults.standard.set(recent, forKey: "recentRepositories")
             }
             status = L("repositoryOpened")
-            fileStats = [:]; requestStats(); syncMarksKey = ""; loadSyncMarks()
+            fileStats = [:]; statBoxes.removeAll(); requestStats(); syncMarksKey = ""; loadSyncMarks()
             reviewLoadedRoot = nil; await updateFingerprints()
             Task { await syncRemoteProtection() }
         } catch { fail(error) }
@@ -218,7 +255,11 @@ import QuartzCore
             self.statsDirty = true
             await self.refresh()
             // Back off while events keep arriving without visible changes; reset as soon as something changes.
-            self.idleDelay = self.lastRefreshChanged ? .milliseconds(300) : min(self.idleDelay * 2, .seconds(4))
+            // While changes keep coming, the pace scales with the list: re-rendering thousands of rows costs ~70 ms,
+            // so a huge working tree refreshes every 1–2 s instead of several times per second (no visible lag).
+            let files = self.files.count
+            let active: Duration = .milliseconds(max(300, min(2_000, files * 2 / 5)))
+            self.idleDelay = self.lastRefreshChanged ? active : min(self.idleDelay * 2, .seconds(4))
         }
     }
     /// Background fetch so the notch can announce incoming commits. Read-only on the working tree.
@@ -246,8 +287,11 @@ import QuartzCore
             lastRefreshChanged = result != repository
             if result != repository {
                 let previousFiles = repository?.files
-                let small = result.files.count < WorkspaceStore.animationLimit && (repository?.files.count ?? 0) < WorkspaceStore.animationLimit
-                if small { withAnimation(.snappy(duration: 0.28)) { repository = result } } else { repository = result }
+                let small = result.files.count < WorkspaceStore.animationLimit && files.count < WorkspaceStore.animationLimit
+                if onlyFilesDiffer(result) {
+                    storedRepository = result
+                    if small { withAnimation(.snappy(duration: 0.28)) { applyDerived(result) } } else { applyDerived(result) }
+                } else if small { withAnimation(.snappy(duration: 0.28)) { repository = result } } else { repository = result }
                 if previousFiles != result.files { statsDirty = true }
             }
             requestStats()
@@ -267,7 +311,15 @@ import QuartzCore
     }
     /// Line stats are the slowest read (a full numstat), so they load after the list and only when dirty.
     func requestStats() {
-        guard statsDirty || fileStats.isEmpty, !statsInFlight, let root = repository?.root, !(repository?.files.isEmpty ?? true) else { if repository?.files.isEmpty == true { fileStats = [:] }; return }
+        guard statsDirty || fileStats.isEmpty, !statsInFlight, let root = repository?.root, !files.isEmpty else { if files.isEmpty == true && !fileStats.isEmpty { fileStats = [:]; for box in statBoxes.values { box.value = nil } }; return }
+        // While an agent keeps writing, line stats reload at most every 1.5 s: each load re-renders every visible row.
+        let wait = 1.5 - Date().timeIntervalSince(lastStatsLoad)
+        if wait > 0, !fileStats.isEmpty {
+            guard statsRetry == nil else { return }
+            statsRetry = Task { [weak self] in try? await Task.sleep(for: .seconds(wait)); self?.statsRetry = nil; self?.requestStats() }
+            return
+        }
+        lastStatsLoad = Date()
         statsInFlight = true; statsDirty = false
         Task {
             defer { statsInFlight = false; if statsDirty { requestStats() } }
@@ -275,7 +327,10 @@ import QuartzCore
             var result: [String: LineStats] = [:]
             result.reserveCapacity(entries.count)
             for entry in entries { result[LineStats.key(entry.path, staged: entry.staged)] = LineStats(additions: entry.additions, deletions: entry.deletions) }
-            if result != fileStats { fileStats = result }
+            if result != fileStats {
+                fileStats = result
+                for (key, box) in statBoxes where box.value != result[key] { box.value = result[key] }
+            }
         }
     }
     @ObservationIgnored private var changesFilterCache: (key: String, staged: [ChangedFile], unstaged: [ChangedFile])?
@@ -283,7 +338,7 @@ import QuartzCore
     func filteredChanges(staged: Bool) -> [ChangedFile] {
         let query = search.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return staged ? changes.staged : changes.unstaged }
-        let key = "\(revision)|\(query)"
+        let key = "\(filesRevision)|\(query)"
         if changesFilterCache?.key != key {
             changesFilterCache = (key, changes.staged.filter { $0.path.localizedCaseInsensitiveContains(query) }, changes.unstaged.filter { $0.path.localizedCaseInsensitiveContains(query) })
         }
@@ -307,6 +362,7 @@ import QuartzCore
             return result
         }.value
         if computed != fingerprints { fingerprints = computed }
+        updateReviewedCount()
         loadReviewIfNeeded()
     }
     /// Marks live in the repository's git dir: never committed, removed with the repository, shared by sessions.
@@ -324,7 +380,7 @@ import QuartzCore
     private func loadReviewIfNeeded() {
         guard let root = repository?.root, reviewLoadedRoot != root else { return }
         reviewLoadedRoot = root
-        let current = Set(repository?.files.map(\.path) ?? [])
+        let current = Set(files.map(\.path))
         var loaded: [String: String] = [:]
         if let url = reviewFile(root), let data = try? Data(contentsOf: url), let stored = try? JSONDecoder().decode([String: String].self, from: data) {
             loaded = stored.filter { current.contains($0.key) } // marks for files that are no longer changed are moot
@@ -348,7 +404,13 @@ import QuartzCore
     func setReviewed(_ files: [ChangedFile], _ value: Bool) {
         withAnimation(.snappy(duration: 0.2)) { for file in files { reviewed[file.path] = value ? fingerprint(file) : nil } }
     }
-    var reviewedCount: Int { (repository?.files ?? []).filter(isReviewed).count }
+    /// Stored, not computed: the sidebar badge read it on every render, scanning thousands of files each time
+    /// an agent touched one. Recomputed only when files, fingerprints or marks change.
+    private(set) var reviewedCount = 0
+    func updateReviewedCount() {
+        let count = files.reduce(0) { $0 + (isReviewed($1) ? 1 : 0) }
+        if count != reviewedCount { reviewedCount = count }
+    }
     /// Combined line stats (staged + unstaged) for one file.
     func totalStats(_ file: ChangedFile) -> LineStats? {
         let a = stats(for: file, staged: false), b = stats(for: file, staged: true)
@@ -357,10 +419,10 @@ import QuartzCore
     }
     /// Filtered tree, memoized per snapshot, stats and filters.
     func reviewTree(query: String, extensionFilter: String?, kindFilter: ChangeKind? = nil, hideReviewed: Bool) -> (nodes: [ChangeNode], files: [ChangedFile]) {
-        let key = "\(revision)|\(fileStats.count)|\(query)|\(extensionFilter ?? "*")|\(kindFilter?.rawValue ?? "*")|\(hideReviewed)|\(hideReviewed ? reviewed.count : 0)"
+        let key = "\(filesRevision)|\(fileStats.count)|\(query)|\(extensionFilter ?? "*")|\(kindFilter?.rawValue ?? "*")|\(hideReviewed)|\(hideReviewed ? reviewed.count : 0)"
         if let cache = reviewCache, cache.key == key { return (cache.nodes, cache.files) }
         let needle = query.trimmingCharacters(in: .whitespaces)
-        let files = (repository?.files ?? []).filter { file in
+        let files = files.filter { file in
             (needle.isEmpty || file.path.localizedCaseInsensitiveContains(needle))
                 && (extensionFilter == nil || (file.path as NSString).pathExtension.lowercased() == extensionFilter)
                 && (kindFilter == nil || file.kind == kindFilter)
@@ -373,7 +435,7 @@ import QuartzCore
     /// Count per change kind and overall line totals, for the reviewer summary.
     var changeSummary: (kinds: [(kind: ChangeKind, count: Int)], additions: Int, deletions: Int) {
         var counts: [ChangeKind: Int] = [:]
-        for file in repository?.files ?? [] { counts[file.kind, default: 0] += 1 }
+        for file in files { counts[file.kind, default: 0] += 1 }
         let stats = fileStats.values
         return (ChangeKind.allCases.compactMap { kind in counts[kind].map { (kind, $0) } },
                 stats.compactMap(\.additions).reduce(0, +), stats.compactMap(\.deletions).reduce(0, +))
@@ -381,7 +443,7 @@ import QuartzCore
     /// Most frequent extensions among changed files, for the filter chips.
     var changeExtensions: [(ext: String, count: Int)] {
         var counts: [String: Int] = [:]
-        for file in repository?.files ?? [] { let ext = (file.path as NSString).pathExtension.lowercased(); if !ext.isEmpty { counts[ext, default: 0] += 1 } }
+        for file in files { let ext = (file.path as NSString).pathExtension.lowercased(); if !ext.isEmpty { counts[ext, default: 0] += 1 } }
         return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.prefix(7).map { ($0.key, $0.value) }
     }
     /// Shows the most relevant diff: unstaged changes first, staged otherwise.
@@ -396,7 +458,7 @@ import QuartzCore
         let commits = (repository?.commits ?? []).filter { commit in
             (scope == nil || scope!.contains(commit.hash)) && (query.isEmpty || "\(commit.subject) \(commit.author) \(commit.hash) \(commit.refs)".localizedCaseInsensitiveContains(query))
         }
-        let model = HistoryModel(commits: commits, graph: CommitGraph(commits: commits, localBranches: changes.localBranches))
+        let model = HistoryModel(commits: commits, graph: CommitGraph(commits: commits, localBranches: refs.localBranches))
         historyCache = (key, model)
         return model
     }
@@ -489,7 +551,7 @@ import QuartzCore
     func showDiff(_ title: String, subtitle: String = "", args: [String]) { diffRequest = DiffRequest(title: title, subtitle: subtitle, args: args) }
     func compareWithHead(_ commit: GitCommit) {
         // HEAD against itself is always empty; for the checked-out commit compare against the working tree instead.
-        if commit.hash == changes.headHash {
+        if commit.hash == refs.headHash {
             showDiff(L("compareWorking"), subtitle: "\(commit.shortHash) (HEAD) → \(L("workingTree"))", args: ["diff", "--no-ext-diff", "--no-textconv", "--no-color", commit.hash])
         } else {
             showDiff(L("compare"), subtitle: "\(commit.shortHash) → HEAD · \(commit.subject)", args: ["diff", "--no-ext-diff", "--no-textconv", "--no-color", commit.hash, "HEAD"])
@@ -664,11 +726,11 @@ import QuartzCore
             case "loadAll": historyLimit = 5_000; await refresh()
             case "sync": route = .sync
             case "review": route = .review
-            case "reviewCount": NSLog("BUTAKE_QA reviewed=%d of=%d", reviewedCount, repository?.files.count ?? 0)
+            case "reviewCount": NSLog("BUTAKE_QA reviewed=%d of=%d", reviewedCount, files.count)
             case let pick where pick.hasPrefix("reviewPick:"):
-                if let file = repository?.files.first(where: { $0.path == String(pick.dropFirst(11)) }) { reviewSelect(file) }
+                if let file = files.first(where: { $0.path == String(pick.dropFirst(11)) }) { reviewSelect(file) }
             case let mark where mark.hasPrefix("reviewMark:"):
-                let prefix = String(mark.dropFirst(11)); setReviewed((repository?.files ?? []).filter { $0.path.hasPrefix(prefix) }, true)
+                let prefix = String(mark.dropFirst(11)); setReviewed(files.filter { $0.path.hasPrefix(prefix) }, true)
             case "tags": route = .tags
             case "pullRequests": route = .pullRequests
             case let render where render.hasPrefix("renderNotch:"):
@@ -775,6 +837,18 @@ import QuartzCore
                 }
                 await withCheckedContinuation { continuation in benchmark.run(label: String(step), frames: 400, pointsPerFrame: 0) { continuation.resume() } }
                 task.cancel()
+            case "checkUpdate": await UpdateService.shared.check(userInitiated: true); NSLog("BUTAKE_QA update phase=%@ latest=%@ available=%d", "\(UpdateService.shared.phase)", UpdateService.shared.latest?.version ?? "-", UpdateService.shared.updateAvailable ? 1 : 0)
+            case "installUpdate": await UpdateService.shared.install(); NSLog("BUTAKE_QA update phase=%@", "\(UpdateService.shared.phase)")
+            case "idle":
+                // Frame monitor without scrolling: measures hitches caused by background work (agent writes, refreshes).
+                let benchmark = ScrollBenchmark()
+                await withCheckedContinuation { continuation in benchmark.run(label: "idle-\(route.rawValue)", frames: 720, pointsPerFrame: 0) { continuation.resume() } }
+            case "selectFiles":
+                // Walks the first changed files like a reviewer pressing ↓, loading each diff.
+                let benchmark = ScrollBenchmark(); let files = Array(changes.unstaged.prefix(12))
+                let walker = Task { @MainActor in for file in files { try? await Task.sleep(for: .milliseconds(350)); selectFile(file, staged: false) } }
+                await withCheckedContinuation { continuation in benchmark.run(label: "selectFiles", frames: 300, pointsPerFrame: 0) { continuation.resume() } }
+                walker.cancel()
             case "scroll":
                 let benchmark = ScrollBenchmark()
                 await withCheckedContinuation { continuation in benchmark.run(label: route.rawValue) { continuation.resume() } }
@@ -785,7 +859,7 @@ import QuartzCore
                 let staged = changes.staged.count
                 let unstageAll = await clock.measure { await stageNow(changes.staged, staged: true) }
                 let graph = clock.measure { historyCache = nil; _ = historyModel(search: "", scope: nil) }
-                NSLog("BUTAKE_QA bench files=%d refresh=%@ stageAll=%@ (staged=%d) unstageAll=%@ graph=%@", repository?.files.count ?? 0, "\(refresh)", "\(stageAll)", staged, "\(unstageAll)", "\(graph)")
+                NSLog("BUTAKE_QA bench files=%d refresh=%@ stageAll=%@ (staged=%d) unstageAll=%@ graph=%@", files.count, "\(refresh)", "\(stageAll)", staged, "\(unstageAll)", "\(graph)")
             case "resolve": resolveNextConflict()
             default: break
             }

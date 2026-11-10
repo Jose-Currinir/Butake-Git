@@ -22,7 +22,7 @@ struct ChangesView: View {
                 Divider()
                 if store.selectedFile != nil && store.diff.isEmpty { ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity) }
                 else if store.selectedFile != nil { DiffView(text: store.diff, path: store.selectedFile?.path, onHunk: store.busy || store.terminalActive ? nil : { store.stageHunk($0) }, hunkTitle: L(store.stagedSelection ? "hunkUnstage" : "hunkStage")) }
-                else { ContentUnavailableView(L(store.repository?.files.isEmpty == true ? "clean" : "diff"), systemImage: store.repository?.files.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass", description: Text(L(store.repository?.files.isEmpty == true ? "cleanDetail" : "chooseFile"))).frame(maxHeight: .infinity) }
+                else { ContentUnavailableView(L(store.files.isEmpty == true ? "clean" : "diff"), systemImage: store.files.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass", description: Text(L(store.files.isEmpty == true ? "cleanDetail" : "chooseFile"))).frame(maxHeight: .infinity) }
             }.frame(minWidth: 310).animation(.easeOut(duration: 0.15), value: store.diff.isEmpty)
         }.sheet(item: $editing) { target in FileEditorView(store: store, path: target.path) }
     }
@@ -33,28 +33,39 @@ struct ChangesView: View {
 }
 private struct FileGroupPane: View {
     let store: WorkspaceStore; let title: String; let files: [ChangedFile]; let staged: Bool; let onResolve: (ChangedFile) -> Void
+    /// SwiftUI's List walks every element on each update; with thousands of files (an agent's burst) each refresh
+    /// cost ~70 ms. The list shows the first rows and the rest on request; search and "stage all" still cover all.
+    static let window = 150
+    @State private var showAll = false
+    var visible: [ChangedFile] { showAll || files.count <= Self.window ? files : Array(files.prefix(Self.window)) }
     var selection: Binding<String?> { Binding(get: { store.stagedSelection == staged ? store.selectedFile?.path : nil }, set: { path in if let file = files.first(where: { $0.path == path }) { store.selectFile(file, staged: staged) } }) }
-    var totals: LineStats {
-        let stats = files.compactMap { store.stats(for: $0, staged: staged) }
-        return LineStats(additions: stats.compactMap(\.additions).reduce(0, +), deletions: stats.compactMap(\.deletions).reduce(0, +))
-    }
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: staged ? "checkmark.circle.fill" : "circle.dashed").foregroundStyle(staged ? Brand.accent : Color.secondary).symbolEffect(.bounce, value: files.count)
+                Image(systemName: staged ? "checkmark.circle.fill" : "circle.dashed").foregroundStyle(staged ? Brand.accent : Color.secondary).symbolEffect(.bounce, value: files.count < WorkspaceStore.animationLimit ? files.count : 0)
                 Text(title).font(.system(size: 11, weight: .semibold))
-                Text("\(files.count)").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule()).contentTransition(.numericText(value: Double(files.count)))
+                Text("\(files.count)").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule()).countTransition(files.count)
                 Spacer(minLength: 0)
-                if !files.isEmpty { StatsBadge(stats: totals).transition(.opacity) }
+                if !files.isEmpty { GroupTotals(store: store, files: files, staged: staged).transition(.opacity) }
                 Button { store.stageFiles(files, staged: staged) } label: { Image(systemName: staged ? "minus" : "plus") }.buttonStyle(.borderless).frame(width: 22, height: 22).help(L(staged ? "unstageAll" : "stageAll")).accessibilityLabel(L(staged ? "unstageAll" : "stageAll")).accessibilityIdentifier(staged ? "changes.unstageAll" : "changes.stageAll").disabled(files.isEmpty || store.busy || store.terminalActive)
-            }.padding(.horizontal, 13).frame(height: 35).background(.bar).animation(.snappy, value: files.count)
+            }.padding(.horizontal, 13).frame(height: 35).background(.bar).animation(files.count < WorkspaceStore.animationLimit ? .snappy : nil, value: files.count)
             Divider()
             if files.isEmpty { VStack(spacing: 5) { Image(systemName: staged ? "tray" : "checkmark").font(.system(size: 17, weight: .light)).foregroundStyle(.tertiary); Text(L(staged ? "noStaged" : "noUnstaged")).font(.caption2).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity.combined(with: .scale(scale: 0.96))) }
             else {
-                List(files, selection: selection) { file in
-                    FileRow(store: store, file: file, staged: staged)
-                        .tag(file.path).help(file.path)
-                        .accessibilityIdentifier("file.\(staged ? "staged" : "unstaged").\(file.path)")
+                List(selection: selection) {
+                    ForEach(visible) { file in
+                        FileRow(store: store, file: file, staged: staged)
+                            .tag(file.path)
+                            .accessibilityIdentifier("file.\(staged ? "staged" : "unstaged").\(file.path)")
+                    }
+                    if visible.count < files.count {
+                        Button { showAll = true } label: {
+                            Label(String(format: L("showRemainingFiles"), files.count - visible.count), systemImage: "chevron.down.circle")
+                                .font(.system(size: 11, weight: .medium)).frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderless).padding(.vertical, 6).selectionDisabled()
+                        .accessibilityIdentifier(staged ? "changes.showAllStaged" : "changes.showAllUnstaged")
+                    }
                 }
                 .contextMenu(forSelectionType: String.self) { paths in
                     if let file = files.first(where: { paths.contains($0.path) }) {
@@ -77,9 +88,23 @@ private struct FileGroupPane: View {
                     store.action(staged ? "unstage" : "stage", value: file.path); return .handled
                 }
                 .listStyle(.inset).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize)
+                // A file chosen elsewhere (search, Review, notch) beyond the first rows expands the list.
+                .onChange(of: store.selectedFile?.path) { _, path in
+                    if !showAll, store.stagedSelection == staged, let path, files.count > Self.window, !visible.contains(where: { $0.path == path }), files.contains(where: { $0.path == path }) { showAll = true }
+                }
                 .transition(.opacity)
             }
         }.background(.background).animation(.smooth(duration: 0.25), value: files.isEmpty)
+    }
+}
+/// Group line totals in their own view: reading every file's stats in the pane body re-evaluated the whole
+/// List (and diffed thousands of rows) each time stats reloaded during an agent's burst of writes.
+private struct GroupTotals: View {
+    let store: WorkspaceStore; let files: [ChangedFile]; let staged: Bool
+    var body: some View {
+        var additions = 0, deletions = 0
+        for file in files { if let stats = store.stats(for: file, staged: staged) { additions += stats.additions ?? 0; deletions += stats.deletions ?? 0 } }
+        return StatsBadge(stats: LineStats(additions: additions, deletions: deletions))
     }
 }
 private struct FileRow: View {
@@ -92,7 +117,7 @@ private struct FileRow: View {
             Group { if file.conflict { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.system(size: 12)) } else { FileTypeIcon(path: file.path, size: 15) } }.frame(width: 16)
             VStack(alignment: .leading, spacing: 3) { Text(file.name).font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).strikethrough(code == "D", color: .secondary); if file.kind == .renamed, let original = file.originalPath { Text(String(format: L("movedFrom"), original)).font(.system(size: 9)).foregroundStyle(.purple).lineLimit(1).truncationMode(.head) } else if !file.directory.isEmpty { Text(file.directory).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) } }
             Spacer(minLength: 3)
-            if let stats = store.stats(for: file, staged: staged), !hovering { StatsBadge(stats: stats).transition(.opacity) }
+            if let stats = store.statBox(file, staged: staged).value, !hovering { StatsBadge(stats: stats).transition(.opacity) }
             else if file.index == "?" && !hovering { Text(L("newFile")).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary) }
             if hovering && !staged && !file.conflict {
                 Button { store.discard(file) } label: { Image(systemName: "arrow.uturn.backward.circle").font(.system(size: 13)) }.buttonStyle(.borderless).foregroundStyle(.secondary).help(L("discardChanges")).disabled(store.busy || store.terminalActive)
@@ -115,7 +140,7 @@ private struct FileRow: View {
     private var accessibilitySummary: String {
         var parts = [L(staged ? "staged" : "unstaged"), file.kind.title]
         if file.conflict { parts.append(L("conflict")) }
-        if let stats = store.stats(for: file, staged: staged), !stats.binary { parts.append("+\(stats.additions ?? 0) −\(stats.deletions ?? 0)") }
+        if let stats = store.statBox(file, staged: staged).value, !stats.binary { parts.append("+\(stats.additions ?? 0) −\(stats.deletions ?? 0)") }
         return parts.joined(separator: ", ")
     }
 }
@@ -125,11 +150,11 @@ private struct CommitComposer: View {
     let onCommit: () -> Void
     @FocusState private var focused: Bool
     var subject: String { store.message.components(separatedBy: "\n").first ?? "" }
-    var stagedCount: Int { store.repository?.staged.count ?? 0 }
+    var stagedCount: Int { store.changes.staged.count }
     var canCommit: Bool { store.canWrite && !store.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (stagedCount > 0 || amend) }
     var blockedReason: String? {
         if !store.canWrite { return nil }
-        if stagedCount == 0 && !amend { return L((store.repository?.files.isEmpty ?? true) ? "commitNothing" : "commitNeedsStage") }
+        if stagedCount == 0 && !amend { return L(store.files.isEmpty ? "commitNothing" : "commitNeedsStage") }
         if store.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return L("commitNeedsMessage") }
         return nil
     }
