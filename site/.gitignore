@@ -3,3 +3,4 @@ dist/
 .astro/
 public/img/
 public/favicon.svg
+public/actualizar.sh

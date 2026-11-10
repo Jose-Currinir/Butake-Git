@@ -1,7 +1,7 @@
 #!/bin/bash
 # Actualiza Butake Git a la última versión publicada, sin desinstalar ni arrastrar nada.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Jose-Currinir/Butake-Git/main/scripts/actualizar.sh | bash
+#   curl -fsSL https://jose-currinir.github.io/Butake-Git/actualizar.sh | bash
 #
 # Qué hace: descarga el instalador de la última versión de GitHub, comprueba su suma SHA-256 publicada y que la
 # app esté firmada con el Developer ID de Butake SpA y notarizada por Apple, cierra la app, la reemplaza en su

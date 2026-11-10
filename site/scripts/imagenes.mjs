@@ -9,4 +9,6 @@ for (const archivo of readdirSync(join(raiz, 'docs/presentacion'))) {
 }
 cpSync(join(raiz, 'native/Sources/ButakeGit/Resources/ButakeLogo.png'), join(destino, 'logo.png'))
 cpSync(join(raiz, 'native/Sources/ButakeGit/Resources/ButakeMark.svg'), new URL('../public/favicon.svg', import.meta.url).pathname)
+// El comando de actualización se sirve desde Pages: raw.githubusercontent.com suele estar bloqueado en redes corporativas.
+cpSync(join(raiz, 'scripts/actualizar.sh'), new URL('../public/actualizar.sh', import.meta.url).pathname)
 console.log('imágenes listas')

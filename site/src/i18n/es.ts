@@ -139,7 +139,7 @@ export const t = {
     aviso: 'Firmada con Developer ID de Butake SpA y notarizada por Apple.',
     actualizarTitulo: '¿Ya la tienes? Actualiza con un comando',
     actualizarTexto: 'Para versiones anteriores a la 1.0.4. Descarga la última, verifica la suma SHA-256 y la firma de Butake SpA, y reemplaza la app sin desinstalar nada. Desde la 1.0.4 la propia app te avisa e instala las nuevas versiones.',
-    actualizarCodigo: 'curl -fsSL https://raw.githubusercontent.com/Jose-Currinir/Butake-Git/main/scripts/actualizar.sh | bash',
+    actualizarCodigo: 'curl -fsSL https://jose-currinir.github.io/Butake-Git/actualizar.sh | bash',
     codigoTitulo: 'O compila desde el código',
     codigo: 'git clone https://github.com/Jose-Currinir/Butake-Git.git\ncd Butake-Git\n./scripts/install-native.sh',
   },

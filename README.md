@@ -186,7 +186,7 @@ Cada control relevante tiene un identificador de accesibilidad estable (`toolbar
 **Actualizar:** desde la 1.0.4 la app avisa sola (junto a Ajustes) e instala la nueva versión tras verificar la suma SHA-256 y la firma. Si tienes una versión anterior (hasta la 1.0.3), actualiza sin desinstalar con:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Jose-Currinir/Butake-Git/main/scripts/actualizar.sh | bash
+curl -fsSL https://jose-currinir.github.io/Butake-Git/actualizar.sh | bash
 ```
 
 El [script](scripts/actualizar.sh) descarga la última versión, comprueba la suma SHA-256, la firma Developer ID de Butake SpA y la notarización, cierra la app, la reemplaza (restaurando la anterior si algo falla) y la vuelve a abrir. `--forzar` reinstala la misma versión.
