@@ -1,5 +1,10 @@
 # Cambios
 
+## 1.0.2 · 2026-11-10
+
+- Scroll del historial fluido a 60 fps también con miles de commits (antes ~20–40 fps en
+  repositorios grandes): las filas ya no crean tooltips ni anclajes de popover propios.
+
 ## 1.0.1 · 2026-11-10
 
 - Instalador firmado con Developer ID de Butake SpA y notarizado por Apple: abre sin advertencias.

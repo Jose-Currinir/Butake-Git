@@ -117,9 +117,10 @@ private struct CommitRow: View {
         HStack(spacing: 12) {
             CommitGraphCell(row: graph, selected: selected, hovering: hovering)
                 .frame(width: graphColumnWidth, height: 57)
-                .popover(isPresented: showCard, arrowEdge: .trailing) { BranchHoverCard(store: store, commit: commit, branch: branch, locals: locals) }
+                // Only the hovered row carries a popover: one per row added an AppKit anchor to every visible row.
+                .overlay { if hover.cardHash == commit.hash { Color.clear.popover(isPresented: showCard, arrowEdge: .trailing) { BranchHoverCard(store: store, commit: commit, branch: branch, locals: locals) } } }
             HStack(spacing: 12) {
-                AuthorAvatar(name: commit.author, size: 24)
+                AuthorAvatar(name: commit.author, size: 24, tooltip: false)
                 VStack(alignment: .leading, spacing: 5) {
                     Text(commit.subject).font(.system(size: 12, weight: selected ? .semibold : .medium)).lineLimit(1)
                     HStack(spacing: 5) {
@@ -129,7 +130,7 @@ private struct CommitRow: View {
                     }
                 }
                 Spacer(minLength: 10)
-                VStack(alignment: .trailing, spacing: 6) { Text(commit.shortHash).font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.accent); Text(RelativeDateCache.shared.text(for: commit.date)).font(.system(size: 9)).help(commit.date.formatted(date: .complete, time: .shortened)).foregroundStyle(.tertiary).lineLimit(1) }
+                VStack(alignment: .trailing, spacing: 6) { Text(commit.shortHash).font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.accent); Text(RelativeDateCache.shared.text(for: commit.date)).font(.system(size: 9)).foregroundStyle(.tertiary).lineLimit(1) }
             }
         }
         .padding(.horizontal, 16).frame(height: 57).contentShape(Rectangle())
@@ -213,6 +214,8 @@ private struct ChipLabelStyle: LabelStyle {
 struct AuthorAvatar: View {
     let name: String
     var size: CGFloat = 24
+    /// Off in long lists: each `.help` installs an AppKit tooltip view per row and makes scrolling stutter.
+    var tooltip = true
     var initials: String { name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased() }
     var color: Color {
         let hash = name.unicodeScalars.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1.value) }
@@ -222,7 +225,7 @@ struct AuthorAvatar: View {
         Text(initials.isEmpty ? "?" : initials).font(.system(size: size * 0.38, weight: .semibold, design: .rounded)).foregroundStyle(color)
             .frame(width: size, height: size).background(color.opacity(0.16), in: Circle())
             .overlay(Circle().strokeBorder(color.opacity(0.35), lineWidth: 0.5))
-            .help(name).accessibilityHidden(true)
+            .help(tooltip ? name : "").accessibilityHidden(true)
     }
 }
 struct CommitGraphCell: View {
