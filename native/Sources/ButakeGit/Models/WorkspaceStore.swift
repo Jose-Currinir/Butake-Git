@@ -24,6 +24,7 @@ import QuartzCore
     private func applyDerived(_ snapshot: RepositorySnapshot?) {
         if files != (snapshot?.files ?? []) { files = snapshot?.files ?? [] }
         changes = snapshot.map(ChangeIndex.init) ?? ChangeIndex(); filesRevision &+= 1
+        refreshChangeTree()
         let nextRefs = RefIndex(headHash: changes.headHash, reachableFromHead: changes.reachableFromHead, localBranches: changes.localBranches)
         if nextRefs != refs { refs = nextRefs }
     }
@@ -59,7 +60,7 @@ import QuartzCore
     var creatingRepository = false
     var publishingRepository = false
     var renamingBranch: String?
-    var route: WorkspaceRoute = .history { didSet { if route != oldValue { autoSelectFile(); if route.isChanges { lastChangesRoute = route } } } }
+    var route: WorkspaceRoute = .history { didSet { if route != oldValue { autoSelectFile(); if route.isChanges { lastChangesRoute = route }; refreshChangeTree() } } }
     /// Last way of viewing Changes (list or review); the sidebar item reopens it.
     @ObservationIgnored var lastChangesRoute: WorkspaceRoute = UserDefaults.standard.string(forKey: "changesView") == WorkspaceRoute.review.rawValue ? .review : .changes {
         didSet { UserDefaults.standard.set(lastChangesRoute.rawValue, forKey: "changesView") }
@@ -80,7 +81,7 @@ import QuartzCore
     var stagedSelection = false
     var diff = ""
     var message = ""
-    var search = ""
+    var search = "" { didSet { if search != oldValue { refreshChangeTree() } } }
     var showInspector = true
     var pending: PendingOperation?
     var terminalLaunch: TerminalLaunch?
@@ -308,7 +309,7 @@ import QuartzCore
                     let hasUnstaged = current.worktree != " " || current.index == "?"
                     let group = stagedSelection ? hasStaged : !hasUnstaged && hasStaged
                     // Reload in place: keeping the old diff until the new one arrives avoids flicker on every refresh.
-                    loadDiff(current, staged: group, keepCurrent: current == selection && group == stagedSelection)
+                    loadDiff(current, staged: group, keepCurrent: current.path == selection.path)
                 } else { selectedFile = nil; diff = "" }
             }
             if let selected = selectedCommit, selected.hash != result.commits.first(where: { $0.hash == selected.hash })?.hash { selectedCommit = result.commits.first }
@@ -333,7 +334,7 @@ import QuartzCore
             result.reserveCapacity(entries.count)
             for entry in entries { result[LineStats.key(entry.path, staged: entry.staged)] = LineStats(additions: entry.additions, deletions: entry.deletions) }
             if result != fileStats {
-                fileStats = result; statsRevision &+= 1
+                fileStats = result; statsRevision &+= 1; refreshChangeTree()
                 for (key, box) in statBoxes where box.value != result[key] { box.value = result[key] }
             }
         }
@@ -422,6 +423,32 @@ import QuartzCore
         if a == nil && b == nil { return nil }
         return LineStats(additions: (a?.additions ?? 0) + (b?.additions ?? 0), deletions: (a?.deletions ?? 0) + (b?.deletions ?? 0))
     }
+    /// Changes › Carpetas. Built in the background: sorting and grouping thousands of paths on the main thread froze
+    /// the window ~170–350 ms on every stage or refresh. The view keeps showing the previous tree until the new one lands.
+    private(set) var changeTree = ChangeTree()
+    @ObservationIgnored private var changeTreeKey = ""
+    @ObservationIgnored private var changeTreeGeneration = 0
+    func refreshChangeTree() {
+        guard route == .review || !changeTree.nodes.isEmpty else { return }
+        let query = search.trimmingCharacters(in: .whitespaces)
+        let key = "\(filesRevision)|\(statsRevision)|\(query)"
+        guard key != changeTreeKey else { return }
+        changeTreeKey = key; changeTreeGeneration &+= 1
+        let generation = changeTreeGeneration, files = self.files, stats = fileStats
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let filtered = query.isEmpty ? files : files.filter { $0.path.localizedCaseInsensitiveContains(query) }
+            let nodes = ChangeNode.tree(filtered) { file in
+                let a = stats[LineStats.key(file.path, staged: false)], b = stats[LineStats.key(file.path, staged: true)]
+                if a == nil && b == nil { return nil }
+                return LineStats(additions: (a?.additions ?? 0) + (b?.additions ?? 0), deletions: (a?.deletions ?? 0) + (b?.deletions ?? 0))
+            }
+            let sorted = filtered.map { ($0.path.lowercased(), $0) }.sorted { $0.0 < $1.0 }.map(\.1)
+            await MainActor.run { [weak self] in
+                guard let self, generation == self.changeTreeGeneration else { return }
+                self.changeTree = ChangeTree(nodes: nodes, files: sorted, revision: generation)
+            }
+        }
+    }
     /// Filtered tree, memoized per snapshot, stats and filters.
     func reviewTree(query: String, extensionFilter: String?, kindFilter: ChangeKind? = nil, hideReviewed: Bool) -> (nodes: [ChangeNode], files: [ChangedFile]) {
         let key = "\(filesRevision)|\(statsRevision)|\(query)|\(extensionFilter ?? "*")|\(kindFilter?.rawValue ?? "*")|\(hideReviewed)|\(hideReviewed ? reviewed.count : 0)"
@@ -434,7 +461,7 @@ import QuartzCore
                 && (!hideReviewed || !isReviewed(file))
         }
         let nodes = ChangeNode.tree(files) { self.totalStats($0) }
-        reviewCache = (key, nodes, files.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending })
+        reviewCache = (key, nodes, files.map { ($0.path.lowercased(), $0) }.sorted { $0.0 < $1.0 }.map(\.1))
         return (nodes, reviewCache!.files)
     }
     /// Count per change kind and overall line totals, for the reviewer summary.
@@ -586,6 +613,9 @@ import QuartzCore
     }
     func action(_ action: String, value: String = "", confirm: Bool = false) {
         guard let root = repository?.root, !busy && !terminalActive else { return }
+        if !confirm, action == "stage" || action == "unstage", let file = files.first(where: { $0.path == value }) {
+            Task { await stageNow([file], staged: action == "unstage") }; return
+        }
         if confirm {
             pending = confirmation(for: action, value: value)
         } else {
@@ -594,6 +624,7 @@ import QuartzCore
     }
     func perform(_ operation: PendingOperation) async {
         guard !busy && !terminalActive else { return }
+        await stagingChain?.value  // never run another Git command on top of a pending stage
         if operation.interactive {
             consoleCommand = operation.command ?? "status"; consoleArguments = operation.arguments; consolePlan = operation.plan
             terminalLaunch = TerminalLaunch(root: operation.root, command: consoleCommand, arguments: consoleArguments, plan: consolePlan)
@@ -652,8 +683,11 @@ import QuartzCore
         guard let root = repository?.root else { return }
         if selectedFile != file { selectedFile = file }
         if stagedSelection != staged { stagedSelection = staged }
-        if !keepCurrent { diff = "" }
         let generation = UUID(); diffGeneration = generation
+        // Clear only if the new diff is slow to arrive: an instant swap avoids a blank flash between files.
+        if !keepCurrent {
+            Task { [weak self] in try? await Task.sleep(for: .milliseconds(150)); if let self, self.diffGeneration == generation, self.selectedFile?.path == file.path { self.diff = "" } }
+        }
         Task {
             do {
                 let value: String = try await engine.call(["method": "diff", "path": root, "file": file.path, "staged": staged])
@@ -665,11 +699,25 @@ import QuartzCore
         guard repository != nil, !busy && !terminalActive else { return }
         Task { await stageNow(files, staged: staged) }
     }
+    /// Staging is quick and frequent (every checkbox): it never flips `busy`, which disabled the sidebar and toolbar
+    /// and re-rendered the whole window (a visible white flash on big repositories). Operations run in order, so fast
+    /// clicks are queued instead of dropped, and other Git actions wait for them through `stagingInFlight`.
+    @ObservationIgnored private var stagingChain: Task<Void, Never>?
+    @ObservationIgnored private(set) var stagingInFlight = false
+    private func enqueueStaging(_ work: @escaping @MainActor () async -> Void) async {
+        let previous = stagingChain
+        let task = Task { @MainActor in
+            await previous?.value
+            stagingInFlight = true
+            await work()
+            stagingInFlight = false
+        }
+        stagingChain = task
+        await task.value
+    }
     func stageNow(_ files: [ChangedFile], staged: Bool) async {
         guard let root = repository?.root, !busy && !terminalActive, !files.isEmpty else { return }
-        busy = true
-        do {
-            defer { busy = false }
+        await enqueueStaging { [self] in
             do {
                 // One engine call and one Git process for the whole batch.
                 let count: Int = try await engine.call(["method": "stagePaths", "path": root, "paths": files.map(\.path), "staged": staged])
@@ -682,14 +730,14 @@ import QuartzCore
     func stageHunk(_ index: Int) {
         guard let root = repository?.root, let file = selectedFile, !busy && !terminalActive else { return }
         let staged = stagedSelection
-        busy = true
         Task {
-            defer { busy = false }
-            do {
-                let _: String = try await engine.call(["method": "stageHunk", "path": root, "file": file.path, "staged": staged, "index": index])
+            await enqueueStaging { [self] in
+                do {
+                    let _: String = try await engine.call(["method": "stageHunk", "path": root, "file": file.path, "staged": staged, "index": index])
+                    status = L("operationComplete")
+                } catch { fail(error) }
                 await refresh()
-                status = L("operationComplete")
-            } catch { fail(error) }
+            }
         }
     }
     func loadCapabilities() async {
@@ -844,6 +892,12 @@ import QuartzCore
                 task.cancel()
             case "checkUpdate": await UpdateService.shared.check(userInitiated: true); NSLog("BUTAKE_QA update phase=%@ latest=%@ available=%d", "\(UpdateService.shared.phase)", UpdateService.shared.latest?.version ?? "-", UpdateService.shared.updateAvailable ? 1 : 0)
             case "installUpdate": await UpdateService.shared.install(); NSLog("BUTAKE_QA update phase=%@", "\(UpdateService.shared.phase)")
+            case let name where name.hasPrefix("togglebench:"):
+                // Frame monitor while a tree checkbox is pressed repeatedly (stage / unstage a folder).
+                let id = String(name.dropFirst(12)); let benchmark = ScrollBenchmark()
+                let presser = Task { @MainActor in for _ in 0..<4 { try? await Task.sleep(for: .milliseconds(900)); NotificationCenter.default.post(name: .init("butake.qa.treeToggle"), object: id) } }
+                await withCheckedContinuation { continuation in benchmark.run(label: "toggle", frames: 330, pointsPerFrame: 0) { continuation.resume() } }
+                presser.cancel()
             case let name where name.hasPrefix("tree:"): NotificationCenter.default.post(name: .init("butake.qa.treeToggle"), object: String(name.dropFirst(5)))
             case "idle":
                 // Frame monitor without scrolling: measures hitches caused by background work (agent writes, refreshes).

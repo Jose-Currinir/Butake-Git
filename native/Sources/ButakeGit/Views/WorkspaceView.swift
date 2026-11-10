@@ -194,7 +194,7 @@ private struct SidebarView: View {
                         } header: { Text("\(L("remoteBranches")) · \(repo.remoteOnly.count)") }
                     }
                 }
-            }.listStyle(.sidebar).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize).disabled(store.busy || store.terminalActive)
+            }.listStyle(.sidebar).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize)
             HStack { VersionBadge(updates: UpdateService.shared); Spacer(); SettingsLink { Image(systemName: "gearshape").font(.system(size: 13)) }.buttonStyle(.borderless).help(L("settings")) }.padding(.horizontal, 16).padding(.vertical, 10)
                 .animation(.snappy, value: UpdateService.shared.updateAvailable)
         }

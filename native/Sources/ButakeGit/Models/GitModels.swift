@@ -277,6 +277,8 @@ enum ChangeKind: String, CaseIterable, Identifiable {
     }
 }
 /// Folder tree of changed files for the reviewer; single-child folders are compacted ("app/Http/Controllers").
+/// Folder tree of the changed files plus the same files sorted by path; built off the main thread.
+struct ChangeTree { var nodes: [ChangeNode] = []; var files: [ChangedFile] = []; var revision = 0 }
 struct ChangeNode: Identifiable, Hashable {
     var id: String
     var name: String
@@ -297,7 +299,8 @@ struct ChangeNode: Identifiable, Hashable {
         }
         func build(_ box: Box, prefix: String) -> [ChangeNode] {
             var result: [ChangeNode] = []
-            for (name, child) in box.dirs.sorted(by: { $0.key.localizedStandardCompare($1.key) == .orderedAscending }) {
+            // Precomputed lowercase keys: localizedStandardCompare inside the sort took ~300 ms with 3 000 files.
+            for (_, name, child) in box.dirs.map({ ($0.key.lowercased(), $0.key, $0.value) }).sorted(by: { $0.0 < $1.0 }) {
                 var label = name, path = prefix + name, current = child
                 while current.files.isEmpty, current.dirs.count == 1, let (next, box) = current.dirs.first { label += "/" + next; path += "/" + next; current = box }
                 let children = build(current, prefix: path + "/")
@@ -305,7 +308,7 @@ struct ChangeNode: Identifiable, Hashable {
                 result.append(ChangeNode(id: path + "/", name: label, file: nil, children: children, files: all,
                                          additions: children.reduce(0) { $0 + $1.additions }, deletions: children.reduce(0) { $0 + $1.deletions }))
             }
-            for file in box.files.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
+            for (_, file) in box.files.map({ ($0.name.lowercased(), $0) }).sorted(by: { $0.0 < $1.0 }) {
                 let line = stats(file)
                 result.append(ChangeNode(id: file.path, name: file.name, file: file, children: nil, files: [file], additions: line?.additions ?? 0, deletions: line?.deletions ?? 0))
             }

@@ -6,6 +6,9 @@
   «va en el commit» (archivo o carpeta entera, con estado parcial); mismo diff y compositor en ambas.
 - Se retira la pantalla «Revisar cambios» con marcas de revisado: preparar y revisar son lo mismo.
 - Historial queda como sección propia.
+- Sin pestañazos al preparar: preparar no bloquea la ventana (los clics se encadenan), la barra lateral ya
+  no se deshabilita, el diff no se vacía al cambiar de grupo y el árbol de Carpetas se arma en segundo plano
+  (de ~355 ms a menos de 2 cuadros por clic con 3.000 archivos).
 
 ## 1.0.4 · 2026-11-10
 

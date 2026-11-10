@@ -6,20 +6,23 @@ struct ChangeTreePane: View {
     let store: WorkspaceStore
     let onResolve: (ChangedFile) -> Void
     @State private var collapsed: Set<String> = []
+    /// Checkbox clicks show at once; Git confirms and the next tree replaces these overrides.
+    @State private var optimistic: [String: Bool] = [:]
     @FocusState private var focused: Bool
 
     private struct Row: Identifiable { let node: ChangeNode; let depth: Int; var id: String { node.id } }
 
     var body: some View {
-        let tree = store.reviewTree(query: store.search, extensionFilter: nil, hideReviewed: false)
+        let tree = store.changeTree
         let rows = flatten(tree.nodes, depth: 0)
         let files = tree.files
-        let stagedCount = files.filter(Self.hasStaged).count
+        let staged = { (file: ChangedFile) in optimistic[file.path] ?? Self.hasStaged(file) }
+        let stagedCount = files.filter(staged).count
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                TreeCheckbox(state: Self.state(of: files)) { toggle(files) }
+                TreeCheckbox(state: state(of: files)) { toggle(files) }
                     .disabled(files.isEmpty || store.busy || store.terminalActive)
-                    .accessibilityLabel(L(Self.state(of: files) == .all ? "unstageAll" : "stageAll"))
+                    .accessibilityLabel(L(state(of: files) == .all ? "unstageAll" : "stageAll"))
                 Text(L("filesInCommit")).font(.system(size: 11, weight: .semibold))
                 Text("\(stagedCount)/\(files.count)").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule())
@@ -31,7 +34,9 @@ struct ChangeTreePane: View {
             }
             .padding(.horizontal, 13).frame(height: 35).background(.bar)
             Divider()
-            if files.isEmpty {
+            if files.isEmpty && !store.files.isEmpty {
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if files.isEmpty {
                 VStack(spacing: 5) { Image(systemName: "checkmark").font(.system(size: 17, weight: .light)).foregroundStyle(.tertiary); Text(L("noUnstaged")).font(.caption2).foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -39,7 +44,7 @@ struct ChangeTreePane: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(rows) { row in
-                                TreeRow(store: store, node: row.node, depth: row.depth, collapsed: collapsed.contains(row.id),
+                                TreeRow(store: store, node: row.node, state: state(of: row.node.files), stagedCount: row.node.files.filter(staged).count, depth: row.depth, collapsed: collapsed.contains(row.id),
                                         selected: !row.node.isFolder && store.selectedFile?.path == row.node.file?.path,
                                         onToggleFolder: { withAnimation(.snappy(duration: 0.2)) { if collapsed.contains(row.id) { collapsed.remove(row.id) } else { collapsed.insert(row.id) } } },
                                         onCheck: { row.node.file?.conflict == true ? onResolve(row.node.file!) : toggle(row.node.files) },
@@ -59,6 +64,16 @@ struct ChangeTreePane: View {
             }
         }
         .background(.background)
+        .onChange(of: tree.revision) { _, _ in
+            // Drop overrides once Git agrees; a failed stage clears its leftovers shortly after.
+            guard !optimistic.isEmpty else { return }
+            optimistic = optimistic.filter { path, inCommit in
+                guard let file = tree.files.first(where: { $0.path == path }) else { return false }
+                return (inCommit ? Self.hasStaged(file) && !Self.hasUnstaged(file) : !Self.hasStaged(file)) == false
+            }
+        }
+        .task(id: optimistic.isEmpty) { if !optimistic.isEmpty { try? await Task.sleep(for: .seconds(3)); optimistic = [:] } }
+        .onAppear { store.refreshChangeTree() }
         #if DEBUG || BUTAKE_QA
         // QA: presses the checkbox of a folder or file by its path, through the same toggle as a click.
         .onReceive(NotificationCenter.default.publisher(for: .init("butake.qa.treeToggle"))) { note in
@@ -73,18 +88,22 @@ struct ChangeTreePane: View {
     enum CheckState { case none, some, all }
     static func hasStaged(_ file: ChangedFile) -> Bool { file.index != " " && file.index != "?" }
     static func hasUnstaged(_ file: ChangedFile) -> Bool { file.worktree != " " || file.index == "?" }
-    static func state(of files: [ChangedFile]) -> CheckState {
+    /// Fully in the commit / partly / not at all, counting pending clicks.
+    private func state(of files: [ChangedFile]) -> CheckState {
         let candidates = files.filter { !$0.conflict }
         guard !candidates.isEmpty else { return .none }
-        let full = candidates.filter { hasStaged($0) && !hasUnstaged($0) }.count
-        if full == candidates.count { return .all }
-        return candidates.contains(where: hasStaged) ? .some : .none
+        func full(_ file: ChangedFile) -> Bool { optimistic[file.path] ?? (Self.hasStaged(file) && !Self.hasUnstaged(file)) }
+        func any(_ file: ChangedFile) -> Bool { optimistic[file.path] ?? Self.hasStaged(file) }
+        if candidates.allSatisfy(full) { return .all }
+        return candidates.contains(where: any) ? .some : .none
     }
     /// Everything in the commit → take it out; otherwise put the rest in.
     private func toggle(_ files: [ChangedFile]) {
         let candidates = files.filter { !$0.conflict }
         guard !candidates.isEmpty, !store.busy, !store.terminalActive else { return }
-        if Self.state(of: candidates) == .all { store.stageFiles(candidates.filter(Self.hasStaged), staged: true) }
+        let removing = state(of: candidates) == .all
+        for file in candidates { optimistic[file.path] = !removing }
+        if removing { store.stageFiles(candidates.filter(Self.hasStaged), staged: true) }
         else { store.stageFiles(candidates.filter(Self.hasUnstaged), staged: false) }
     }
     private func select(_ file: ChangedFile) {
@@ -129,6 +148,8 @@ private struct TreeCheckbox: View {
 private struct TreeRow: View {
     let store: WorkspaceStore
     let node: ChangeNode
+    let state: ChangeTreePane.CheckState
+    let stagedCount: Int
     let depth: Int
     let collapsed: Bool
     let selected: Bool
@@ -136,7 +157,6 @@ private struct TreeRow: View {
     let onCheck: () -> Void
     let onSelect: () -> Void
     var body: some View {
-        let state = ChangeTreePane.state(of: node.files)
         HStack(spacing: 7) {
             Group {
                 if node.isFolder {
@@ -155,7 +175,7 @@ private struct TreeRow: View {
                 Image(systemName: collapsed ? "folder.fill" : "folder").foregroundStyle(.secondary).font(.system(size: 11))
                 Text(node.name).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
-                Text("\(node.files.filter(ChangeTreePane.hasStaged).count)/\(node.files.count)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                Text("\(stagedCount)/\(node.files.count)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             } else if let file = node.file {
                 FileTypeIcon(path: file.path, size: 15)
                 VStack(alignment: .leading, spacing: 1) {
