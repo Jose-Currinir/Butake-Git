@@ -10,7 +10,7 @@ Interfaz SwiftUI/AppKit, marca Butake oficial, dos paneles de archivos y compose
 - Virtualización del historial y mediciones con repos grandes (paginación implementada hasta 5.000 commits).
 - Planes de rebase con merges; operaciones drag-and-drop y recuperación más guiada.
 - Clonar/inicializar con asistente; formularios completos de submódulos, LFS, bisect, firma, config y ramas remotas (consola disponible según Git instalado).
-- Validación Bitbucket con cuenta real; paginación, revisión inline, solicitud de cambios y manejo completo de revisores.
+- Validación Bitbucket con cuenta real; paginación de la lista de pull requests, revisión inline, solicitud de cambios y manejo completo de revisores.
 - Integraciones GitHub/GitLab/Azure, AWS CodePipeline, issues/Jira.
 - Orquestación simultánea de agentes, tareas compartidas, métricas tipo Insights.
 - Firma Developer ID, notarización, actualizaciones firmadas, distribución y CI autorizado.

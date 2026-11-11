@@ -15,7 +15,7 @@ Instalar o actualizar en /Applications: `./scripts/install-native.sh`. Compilar 
 ## Funciones
 
 - Archivos sin preparar y preparados en paneles separados, redimensionables, con scroll independiente; compositor de commit fijo.
-- Revisar cambios: árbol por carpetas con conteos y +/−, filtros por extensión y ruta, marcas de revisado que se invalidan si el archivo vuelve a cambiar, progreso, acciones por carpeta y recorrido con teclado (espacio, S, N, ⌥↩).
+- Cambios en Lista o en Carpetas: el mismo diff y el mismo compositor en ambas; en Carpetas cada casilla es «va en el commit» (archivo o carpeta entera, con estado parcial), con conteos, +/− y recorrido con teclado.
 - Diff nativo seleccionable, búsqueda, números originales/nuevos y stage/unstage por archivo o bloque. Commit y amend con hooks reales.
 - Historial con grafo de padres, filtros, detalle y comparación; ramas, remotos, tags, stash, reflog y worktrees.
 - Sincronizar ramas: compara main/develop (u otras) por contenido, muestra qué falta en cada una y qué ya se copió, y copia lo seleccionado con un clic.
@@ -41,7 +41,7 @@ Historial paginado de 180 en 180 commits (máximo 5.000 cargados); sin virtualiz
 
 La política local protege main y bloquea force push, pushes masivos y ciertas variantes de plumbing. Git conserva sus hooks, SSH Agent y credential helpers. La terminal permite responder prompts y usar el editor de Git. Estas guardas no reemplazan branch permissions del proveedor.
 
-La API Bitbucket está implementada, **sin validación contra una cuenta real**; páginas iniciales de resultados, sin paginación completa. No hay revisión inline de PR, orquestación simultánea de agentes, Insights, Jira ni integración AWS CodePipeline. Sólo una sesión PTY activa.
+La API Bitbucket está implementada, **sin validación contra una cuenta real**; la lista de pull requests muestra los 50 más recientes (comentarios, revisiones, checks y repositorios se leen completos). No hay revisión inline de PR, orquestación simultánea de agentes, Insights, Jira ni integración AWS CodePipeline. Sólo una sesión PTY activa.
 
 `native/` (app) y `engine/` (motor) son todo el producto. No hay CI/CD activado. La firma y notarización se hacen en local con `package-dmg.sh`.
 

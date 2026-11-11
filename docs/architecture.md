@@ -19,4 +19,4 @@ La terminal hereda el entorno local, SSH Agent, credential helpers, hooks y edit
 
 Build mediante Cargo y SwiftPM; SwiftTerm fijado en Package.resolved. El script ensambla un .app local firmado ad hoc. El catálogo de comandos (`native/Sources/ButakeGit/Resources/commands.json`) es la única fuente: la app lo empaqueta y el motor lo incluye al compilar.
 
-Límites conocidos: snapshot de historial de 180 commits, texto/diff en memoria, paginación remota incompleta, previsualización UTF-8. No se declara paridad total con clientes maduros. Ver matriz y roadmap.
+Límites conocidos: snapshot de historial de 180 commits, texto/diff en memoria, lista de pull requests limitada a los 50 más recientes, previsualización UTF-8. No se declara paridad total con clientes maduros. Ver matriz y roadmap.

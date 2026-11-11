@@ -1,5 +1,44 @@
 # Cambios
 
+## 1.0.9 · 2026-11-11
+
+- **Corregido: la app se pegaba al guardar** desde el editor con la pestaña «Ver cambios» abierta.
+- **Consola Git:** un comando ya ejecutado no vuelve a correr al regresar a la pestaña; con una sesión en curso la
+  app no deja cambiar de sección (antes la mataba a medias y quedaba bloqueada).
+- **Confirmaciones:** el botón dice lo que hace («Eliminar rama», «Subir cambios») en vez de «Descartar»; subir y bajar
+  muestran el destino (`develop → origin/develop`); `reset --hard` avisa que descarta cambios.
+- **Notch:** «Commit y subir» confirma el push y no sube nada si preparar o commitear falló.
+- **Bloques del diff:** preparar un bloque ya no puede caer en otro archivo (`diff.noprefix`), ni en otro bloque si el
+  archivo cambió; funciona con archivos no UTF-8 y con renombres preparados.
+- **Organizar commits:** conserva los mensajes nuevos si hay conflicto, no ofrece commits ya publicados y deshacer
+  guarda otro respaldo antes de volver atrás.
+- **Copiar commits:** informa cuántos copió de verdad, vuelve al commit original desde HEAD suelto y reconoce los
+  conflictos «agregado en ambos» / «eliminado en ambos».
+- **Protección de main:** un corte de red o un token vencido ya no la desactiva; la consola no la salta con
+  `switch -C`, `checkout -B` ni `rebase <x> main`.
+- **Diffs con finales de línea CRLF** ya no desalinean las tarjetas por archivo ni la numeración del editor.
+- **Editor:** deshacer tras «Recargar» ya no corrompe el texto; cambiar de pestaña conserva cursor y deshacer.
+- **Conflictos:** una línea `=======` propia del archivo ya no impide guardar; cancelar con cambios pide confirmación.
+- **Pull requests:** el borrador de un comentario no se envía a otro PR al cambiar de selección.
+- Historial con filtro: el grafo ya no congela la app con miles de commits; un filtro de archivo escrito en Cambios
+  no lleva al Historial.
+- Al cambiar de repositorio, una lectura tardía del anterior ya no lo reemplaza; los worktrees enlazados se
+  refrescan con los cambios de Git hechos fuera de la app.
+- Los hooks lentos o que dejan procesos en segundo plano ya no cortan el commit a los 2 minutos.
+- Nueva rama valida el nombre antes de ejecutar; «Corregir el último commit» se desactiva después de enmendar.
+- Más identificadores de accesibilidad (Archivos, Nueva rama, Conflictos, Consola) y sin identificadores repetidos.
+- **Corregido: la app se pegaba con «Organizar commits» abierto** en cuanto VoiceOver o un agente consultaba la
+  ventana; los estados vacíos de toda la app usan ahora una vista propia.
+- **Corregido: abrir Clonar, Publicar o Pull requests podía bloquear la ventana** esperando al Llavero; las cuentas
+  se leen una vez, en segundo plano.
+- Comentarios, revisiones, checks y repositorios del proveedor se leen completos (antes sólo los
+  primeros 100); un repositorio renombrado en el proveedor ya no aparece como error de red.
+- **Archivo nuevo preparado y luego editado** (por ejemplo, una copia que el IDE agrega sola): «Sin preparar» lo
+  muestra completo como archivo nuevo, con un aviso de que tiene una parte preparada y otra no, y sus líneas se
+  cuentan una sola vez (antes parecía un archivo existente modificado, con +30 −10 para 20 líneas).
+- La actualización valida la firma con un requisito de código (certificado Developer ID de Butake y bundle exacto).
+- **Web:** en teléfonos la página ya no se ensancha y angosta sola ni deja deslizar hacia la derecha.
+
 ## 1.0.8 · 2026-11-11
 
 - **Diff por archivos:** al ver un commit o una comparación, cada archivo es una tarjeta con su estado (Nuevo,
