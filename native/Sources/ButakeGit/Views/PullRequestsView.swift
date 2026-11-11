@@ -23,12 +23,12 @@ struct PullRequestsView: View {
                 Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh")).accessibilityLabel(L("refresh"))
             }.padding(14).background(Brand.bar)
             Divider()
-            if let repo, (try? ProviderVault.load(repo.provider)) ?? nil == nil {
+            if let repo, ProviderAccounts.shared.loaded, !ProviderAccounts.shared.isConnected(repo.provider) {
                 ConnectProviderCard(provider: repo.provider)
             } else if repo == nil {
-                ContentUnavailableView { Label(L("prEmptyTitle"), systemImage: "arrow.triangle.pull") } description: { Text(L("unsupportedRemote")) } actions: { Button(L("viewRemotes")) { store.route = .remotes }.accessibilityIdentifier("pr.viewRemotes") }.frame(maxHeight: .infinity)
+                EmptyState { Label(L("prEmptyTitle"), systemImage: "arrow.triangle.pull") } description: { Text(L("unsupportedRemote")) } actions: { Button(L("viewRemotes")) { store.route = .remotes }.accessibilityIdentifier("pr.viewRemotes") }.frame(maxHeight: .infinity)
             } else if !error.isEmpty && requests.isEmpty {
-                VStack(spacing: 14) { ContentUnavailableView(L("pullRequests"), systemImage: "exclamationmark.triangle", description: Text(error)); AccountsLink() }.frame(maxHeight: .infinity)
+                VStack(spacing: 14) { EmptyState(L("pullRequests"), systemImage: "exclamationmark.triangle", description: Text(error)); AccountsLink() }.frame(maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
                     List(requests, selection: $selected) { pr in
@@ -46,10 +46,10 @@ struct PullRequestsView: View {
                         }.padding(.vertical, 5).tag(pr.id).accessibilityIdentifier("pr.\(pr.id)")
                     }
                     .frame(minWidth: 260, idealWidth: 320, maxWidth: 420)
-                    .overlay { if requests.isEmpty && !loading { ContentUnavailableView(L("noPRs"), systemImage: "tray") } }
+                    .overlay { if requests.isEmpty && !loading { EmptyState(L("noPRs"), systemImage: "tray") } }
                     Divider()
-                    if let pr = selectedRequest, let repo { PullRequestDetail(store: store, pr: pr, repo: repo, reload: { await load() }).frame(maxWidth: .infinity) }
-                    else { ContentUnavailableView(L("pullRequests"), systemImage: "arrow.triangle.pull", description: Text(L("noSelection"))).frame(maxWidth: .infinity) }
+                    if let pr = selectedRequest, let repo { PullRequestDetail(store: store, pr: pr, repo: repo, reload: { await load() }).id(pr.id).frame(maxWidth: .infinity) }
+                    else { EmptyState(L("pullRequests"), systemImage: "arrow.triangle.pull", description: Text(L("noSelection"))).frame(maxWidth: .infinity) }
                 }
             }
         }
@@ -57,10 +57,11 @@ struct PullRequestsView: View {
         .sheet(isPresented: $newPR) { if let repo { NewPullRequestSheet(store: store, repo: repo) { await load() }.themedSheet() } }
     }
     private func load() async {
-        guard let repo, ((try? ProviderVault.load(repo.provider)) ?? nil) != nil else { return }
+        await ProviderAccounts.shared.ensureLoaded()
+        guard let repo, ProviderAccounts.shared.isConnected(repo.provider) else { return }
         loading = true; defer { loading = false }; error = ""
-        do { requests = try await client.pullRequests(repo, state: state); if selected == nil || !requests.contains(where: { $0.id == selected }) { selected = requests.first?.id } }
-        catch { self.error = error.localizedDescription; requests = [] }
+        do { let value = try await client.pullRequests(repo, state: state); guard !Task.isCancelled else { return }; requests = value; if selected == nil || !requests.contains(where: { $0.id == selected }) { selected = requests.first?.id } }
+        catch { guard !Task.isCancelled else { return }; self.error = error.localizedDescription; requests = [] }
     }
 }
 
@@ -126,9 +127,9 @@ struct PipelinesView: View {
                 Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh")).accessibilityLabel(L("refresh"))
             }.padding(14).background(Brand.bar)
             Divider()
-            if let repo, ((try? ProviderVault.load(repo.provider)) ?? nil) == nil { ConnectProviderCard(provider: repo.provider) }
-            else if repo == nil { ContentUnavailableView { Label(L("prEmptyTitle"), systemImage: "checkmark.seal") } description: { Text(L("unsupportedRemote")) } actions: { Button(L("viewRemotes")) { store.route = .remotes } }.frame(maxHeight: .infinity) }
-            else if !error.isEmpty { VStack(spacing: 14) { ContentUnavailableView(L("pipelines"), systemImage: "exclamationmark.triangle", description: Text(error)); AccountsLink() }.frame(maxHeight: .infinity) }
+            if let repo, ProviderAccounts.shared.loaded, !ProviderAccounts.shared.isConnected(repo.provider) { ConnectProviderCard(provider: repo.provider) }
+            else if repo == nil { EmptyState { Label(L("prEmptyTitle"), systemImage: "checkmark.seal") } description: { Text(L("unsupportedRemote")) } actions: { Button(L("viewRemotes")) { store.route = .remotes } }.frame(maxHeight: .infinity) }
+            else if !error.isEmpty { VStack(spacing: 14) { EmptyState(L("pipelines"), systemImage: "exclamationmark.triangle", description: Text(error)); AccountsLink() }.frame(maxHeight: .infinity) }
             else {
                 List(runs) { run in
                     HStack(spacing: 10) {
@@ -139,12 +140,13 @@ struct PipelinesView: View {
                         if let url = run.url { Link(destination: url) { Image(systemName: "arrow.up.right.square") } }
                     }.padding(.vertical, 6)
                 }.listStyle(.inset).themedScroll()
-                .overlay { if runs.isEmpty && !loading { ContentUnavailableView(L("noRuns"), systemImage: "tray") } }
+                .overlay { if runs.isEmpty && !loading { EmptyState(L("noRuns"), systemImage: "tray") } }
             }
         }.task(id: store.repository?.remote ?? "") { await load() }
     }
     private func load() async {
-        guard let repo, ((try? ProviderVault.load(repo.provider)) ?? nil) != nil else { return }
+        await ProviderAccounts.shared.ensureLoaded()
+        guard let repo, ProviderAccounts.shared.isConnected(repo.provider) else { return }
         loading = true; defer { loading = false }
         do { runs = try await client.runs(repo); error = "" } catch { self.error = error.localizedDescription }
     }

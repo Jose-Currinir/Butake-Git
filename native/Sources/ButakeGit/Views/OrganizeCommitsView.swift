@@ -71,7 +71,7 @@ struct OrganizeCommitsView: View {
     @ViewBuilder private var content: some View {
         if loading { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
         else if items.isEmpty {
-            ContentUnavailableView(L("organizeEmpty"), systemImage: "checkmark.circle", description: Text(error.isEmpty ? L("organizeEmptyDetail") : error)).frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyState(L("organizeEmpty"), systemImage: "checkmark.circle", description: Text(error.isEmpty ? L("organizeEmptyDetail") : error)).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 0) {
                 actionBar
@@ -130,7 +130,7 @@ struct OrganizeCommitsView: View {
                     .contentTransition(.opacity).animation(.snappy, value: summaryText)
             }
             Spacer()
-            Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+            Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(applying)
             Button { confirming = true } label: { if applying { Spinner(size: 14) } else { Text(L("apply")) } }
                 .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                 .disabled(!changed || applying || resultCount == 0 || items.contains { !$0.drop && $0.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
@@ -198,6 +198,7 @@ struct OrganizeCommitsView: View {
 
     private func apply() async {
         guard let candidates else { return }
+        guard store.canWrite else { error = L("busyTryAgain"); return }
         applying = true; defer { applying = false }
         if let failure = await store.applyRewrite(candidates: candidates, items: items) { error = failure; if store.repository?.operation == "rebase" { dismiss() } }
         else { dismiss() }
@@ -256,7 +257,7 @@ struct CommitPreview: View {
             }.padding(.horizontal, 14).frame(height: 38).background(Brand.bar)
             Divider()
             if hashes.isEmpty {
-                ContentUnavailableView(L("previewTitle"), systemImage: "cursorarrow.click", description: Text(L("previewHint"))).frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyState(L("previewTitle"), systemImage: "cursorarrow.click", description: Text(L("previewHint"))).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 DiffView(text: text.isEmpty ? " " : text).accessibilityIdentifier("organize.preview")
             }

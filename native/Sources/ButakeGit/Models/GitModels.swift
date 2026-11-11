@@ -29,7 +29,7 @@ struct RepositorySnapshot: Codable, Equatable {
     var remoteOnly: [RemoteBranch] { let locals = Set(branches.map(\.name)); return (remoteBranches ?? []).filter { !locals.contains($0.short) } }
     var name: String { URL(fileURLWithPath: root).lastPathComponent }
     /// Commit checked out (decorated `HEAD`), if it is among the loaded commits.
-    var headHash: String? { commits.first { $0.refs == "HEAD" || $0.refs.hasPrefix("HEAD ->") || $0.refs.hasPrefix("HEAD,") }?.hash }
+    var headHash: String? { commits.first { $0.refs.components(separatedBy: ", ").contains { $0 == "HEAD" || $0.hasPrefix("HEAD -> ") } }?.hash }
     /// Loaded commits already contained in HEAD, following every parent.
     var reachableFromHead: Set<String> {
         guard let head = headHash else { return [] }
@@ -179,6 +179,8 @@ struct PendingOperation: Identifiable {
     var root: String
     var action: String?
     var value = ""
+    /// Several paths for one confirmation (discard many): a list, never a joined string.
+    var paths: [String] = []
     var command: String?
     var arguments = ""
     var preview: String

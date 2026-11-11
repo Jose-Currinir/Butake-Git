@@ -178,12 +178,22 @@ private struct QuickCommitView: View {
     private func commit(push: Bool) async {
         guard let root = repo?.root else { return }
         working = true; error = ""; defer { working = false }
-        if includeAll && !unstaged.isEmpty { await store.stageNow(unstaged, staged: false) }
+        store.errorMessage = nil
+        if includeAll && !unstaged.isEmpty {
+            await store.stageNow(unstaged, staged: false)
+            // A failed stage (e.g. another tool holds index.lock) must not commit, let alone push, a subset.
+            if let failure = store.errorMessage, !failure.isEmpty { error = failure; store.errorMessage = nil; return }
+        }
         store.message = message; store.errorMessage = nil
         await store.perform(PendingOperation(title: L("commit"), root: root, action: "commit", value: message, preview: "git commit"))
         if let failure = store.errorMessage, !failure.isEmpty { error = failure; store.errorMessage = nil; return }
-        if push { await store.perform(PendingOperation(title: L("push"), root: root, action: "push", preview: "git push")) }
-        if store.pullProblem != nil { bringMainWindow() }
+        // `perform` clears the message only when the commit was created; it returns silently when the app is busy.
+        guard store.message.isEmpty else { error = L("busyTryAgain"); return }
+        if push, let operation = store.confirmation(for: "push") {
+            // Same preview and warnings as every other push: the destination is shown and confirmed.
+            NotchQuickPanel.shared.show(.confirm(PendingOperationSnapshot(action: "push", title: operation.title, preview: operation.preview, detail: operation.detail, destructive: operation.destructive)), store: store)
+            return
+        }
         close()
     }
 }

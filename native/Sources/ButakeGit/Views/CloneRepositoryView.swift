@@ -22,7 +22,7 @@ struct CloneRepositorySheet: View {
     static var defaultParent: String {
         UserDefaults.standard.string(forKey: "cloneParent") ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Developer").path
     }
-    private var connected: [HostingProvider] { HostingProvider.allCases.filter { ((try? ProviderVault.load($0)) ?? nil) != nil } }
+    private var connected: [HostingProvider] { HostingProvider.allCases.filter(ProviderAccounts.shared.isConnected) }
     private var filtered: [HostedRemoteRepository] { accounts.filter { query.isEmpty || $0.fullName.localizedCaseInsensitiveContains(query) } }
     private var target: String { (parent as NSString).appendingPathComponent(name) }
     private var urlLooksValid: Bool { url.hasPrefix("https://") || url.hasPrefix("ssh://") || (url.hasPrefix("git@") && url.contains(":")) }
@@ -77,6 +77,7 @@ struct CloneRepositorySheet: View {
         }
         .frame(width: 640, height: connected.isEmpty ? 420 : 620)
         .task {
+            await ProviderAccounts.shared.ensureLoaded()
             // Without a saved choice, clone next to the repository you have open (e.g. ~/Herd).
             if UserDefaults.standard.string(forKey: "cloneParent") == nil, let root = store.repository?.root { parent = (root as NSString).deletingLastPathComponent }
             if url.isEmpty, let pasted = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), pasted.count < 300, pasted.hasPrefix("git@") || (pasted.hasPrefix("https://") && pasted.hasSuffix(".git")) { url = pasted }

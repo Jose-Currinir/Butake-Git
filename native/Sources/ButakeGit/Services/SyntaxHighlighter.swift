@@ -75,9 +75,21 @@ enum SyntaxPalette {
     static var function: NSColor { Brand.theme.function.ns }
 }
 
+/// The palette resolved once (on the main thread, where the theme lives). A highlighter built with it can color
+/// text on a background queue, and does not look the theme up again for every span.
+struct SyntaxColors {
+    let keyword, string, comment, number, type, variable, attribute, tag, function: NSColor
+    static var current: SyntaxColors {
+        SyntaxColors(keyword: SyntaxPalette.keyword, string: SyntaxPalette.string, comment: SyntaxPalette.comment, number: SyntaxPalette.number, type: SyntaxPalette.type,
+                     variable: SyntaxPalette.variable, attribute: SyntaxPalette.attribute, tag: SyntaxPalette.tag, function: SyntaxPalette.function)
+    }
+}
+
 /// Colors spans of a single line. Multi-line comments are tracked with `inBlockComment`.
 struct SyntaxHighlighter {
     let language: CodeLanguage
+    let colors: SyntaxColors
+    init(language: CodeLanguage, colors: SyntaxColors = .current) { self.language = language; self.colors = colors }
     private static let string = try! NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|`(?:[^`\\]|\\.)*`?"#)
     private static let number = try! NSRegularExpression(pattern: #"\b(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?)\b"#)
     private static let word = try! NSRegularExpression(pattern: #"[A-Za-z_][A-Za-z0-9_]*"#)
@@ -111,7 +123,7 @@ struct SyntaxHighlighter {
                 if inBlockComment {
                     let end = text.range(of: closer, range: NSRange(location: cursor, length: full.length - cursor))
                     let stop = end.location == NSNotFound ? full.length : end.location + end.length
-                    add(NSRange(location: cursor, length: stop - cursor), SyntaxPalette.comment, protect: true)
+                    add(NSRange(location: cursor, length: stop - cursor), colors.comment, protect: true)
                     if end.location == NSNotFound { return spans }
                     inBlockComment = false; cursor = stop
                 } else {
@@ -126,7 +138,7 @@ struct SyntaxHighlighter {
         if language == .markdown {
             for match in Self.markdownHeading.matches(in: line, range: full) {
                 let first = text.character(at: match.range.location)
-                let color = first == 42 ? SyntaxPalette.type : first == 96 ? SyntaxPalette.string : SyntaxPalette.keyword // **bold**, `code`, # heading
+                let color = first == 42 ? colors.type : first == 96 ? colors.string : colors.keyword // **bold**, `code`, # heading
                 add(match.range, color, protect: true)
             }
             return spans
@@ -142,27 +154,27 @@ struct SyntaxHighlighter {
                 let insideString = strings.contains { NSLocationInRange(found.location, $0) }
                 // "#" in CSS colors or PHP attributes is not a comment.
                 let falsePositive = marker == "#" && found.location > 0 && text.character(at: found.location - 1) != 32 && text.character(at: found.location - 1) != 9
-                if !insideString && !falsePositive && free(found) { add(NSRange(location: found.location, length: full.length - found.location), SyntaxPalette.comment, protect: true); break }
+                if !insideString && !falsePositive && free(found) { add(NSRange(location: found.location, length: full.length - found.location), colors.comment, protect: true); break }
                 search = NSRange(location: found.location + found.length, length: full.length - found.location - found.length)
             }
         }
-        if language == .php && text.hasPrefix("#") && !text.hasPrefix("#[") { add(full, SyntaxPalette.comment, protect: true) }
-        for range in strings { add(range, SyntaxPalette.string, protect: true) }
-        if language == .blade { for match in Self.bladeDirective.matches(in: line, range: full) { add(match.range, SyntaxPalette.attribute, protect: true) } }
-        if language.markup { for match in Self.tag.matches(in: line, range: full) { add(match.range, SyntaxPalette.tag, protect: true) } }
-        if language == .css { for match in Self.cssProperty.matches(in: line, range: full) { add(match.range, SyntaxPalette.type, protect: true) } }
-        if [.yaml, .toml, .json].contains(language) { for match in Self.yamlKey.matches(in: line, range: full) { add(match.range, SyntaxPalette.tag, protect: true) } }
-        if [.php, .blade, .shell].contains(language) { for match in Self.variable.matches(in: line, range: full) { add(match.range, SyntaxPalette.variable, protect: true) } }
-        for match in Self.attribute.matches(in: line, range: full) { add(match.range, SyntaxPalette.attribute, protect: true) }
-        for match in Self.number.matches(in: line, range: full) { add(match.range, SyntaxPalette.number) }
+        if language == .php && text.hasPrefix("#") && !text.hasPrefix("#[") { add(full, colors.comment, protect: true) }
+        for range in strings { add(range, colors.string, protect: true) }
+        if language == .blade { for match in Self.bladeDirective.matches(in: line, range: full) { add(match.range, colors.attribute, protect: true) } }
+        if language.markup { for match in Self.tag.matches(in: line, range: full) { add(match.range, colors.tag, protect: true) } }
+        if language == .css { for match in Self.cssProperty.matches(in: line, range: full) { add(match.range, colors.type, protect: true) } }
+        if [.yaml, .toml, .json].contains(language) { for match in Self.yamlKey.matches(in: line, range: full) { add(match.range, colors.tag, protect: true) } }
+        if [.php, .blade, .shell].contains(language) { for match in Self.variable.matches(in: line, range: full) { add(match.range, colors.variable, protect: true) } }
+        for match in Self.attribute.matches(in: line, range: full) { add(match.range, colors.attribute, protect: true) }
+        for match in Self.number.matches(in: line, range: full) { add(match.range, colors.number) }
         let keywords = language.keywords
         let caseInsensitive = language == .sql
         for match in Self.word.matches(in: line, range: full) where free(match.range) {
             let word = text.substring(with: match.range)
-            if keywords.contains(caseInsensitive ? word.lowercased() : word) { add(match.range, SyntaxPalette.keyword, protect: true) }
-            else if let first = word.unicodeScalars.first, CharacterSet.uppercaseLetters.contains(first), word.count > 1, ![.json, .yaml, .toml, .sql, .shell].contains(language) { add(match.range, SyntaxPalette.type, protect: true) }
+            if keywords.contains(caseInsensitive ? word.lowercased() : word) { add(match.range, colors.keyword, protect: true) }
+            else if let first = word.unicodeScalars.first, CharacterSet.uppercaseLetters.contains(first), word.count > 1, ![.json, .yaml, .toml, .sql, .shell].contains(language) { add(match.range, colors.type, protect: true) }
         }
-        for match in Self.call.matches(in: line, range: full) { add(match.range, SyntaxPalette.function) }
+        for match in Self.call.matches(in: line, range: full) { add(match.range, colors.function) }
         return spans
     }
 }

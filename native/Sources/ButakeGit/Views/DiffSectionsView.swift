@@ -14,7 +14,7 @@ struct DiffSectionsView: View {
                 ForEach(sections) { section in
                     if let file = section.file {
                         // A file that was only moved has nothing to show beyond its header.
-                        let expandable = file.binary || section.patch.contains("\n@@ ")
+                        let expandable = file.binary || section.patch.range(of: "\n@@", options: .literal) != nil
                         let open = expandable && !collapsed.contains(section.id)
                         Section {
                             if open {
@@ -36,7 +36,7 @@ struct DiffSectionsView: View {
     }
     /// Height before the first layout: about one row per line (trailing header lines are not shown).
     static func estimate(_ patch: String) -> CGFloat {
-        CGFloat(max(1, patch.reduce(0) { $1 == "\n" ? $0 + 1 : $0 } - 2)) * TextScale.points(18.5) + 12
+        CGFloat(max(1, patch.utf8.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 } - 2)) * TextScale.points(18.5) + 12
     }
 }
 

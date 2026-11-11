@@ -43,6 +43,9 @@ import QuartzCore
     @ObservationIgnored private var historyCache: (key: String, model: HistoryModel)?
     @ObservationIgnored private var refreshInFlight = false
     @ObservationIgnored private var refreshQueued = false
+    @ObservationIgnored private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Last background refresh error already shown: the same failure is not presented again on every file event.
+    @ObservationIgnored private var lastRefreshFailure: String?
     /// A queued or scheduled refresh needs the full snapshot (history, branches), not just the changed files.
     @ObservationIgnored private var queuedFull = false
     @ObservationIgnored private var scheduledFull = false
@@ -54,6 +57,7 @@ import QuartzCore
     var lastFetch: Date?
     @ObservationIgnored private var statsInFlight = false
     @ObservationIgnored private var statsDirty = false
+    @ObservationIgnored private var statsLoadedRevision = -1
     @ObservationIgnored var watcher: RepositoryWatcher?
     /// Above this many rows, list diffs are applied without animation to keep updates instant.
     static let animationLimit = 250
@@ -63,7 +67,12 @@ import QuartzCore
     var creatingRepository = false
     var publishingRepository = false
     var renamingBranch: String?
-    var route: WorkspaceRoute = .history { didSet { if route != oldValue { autoSelectFile(); if route.isChanges { lastChangesRoute = route }; refreshChangeTree() } } }
+    var route: WorkspaceRoute = .history { didSet {
+        guard route != oldValue else { return }
+        // Leaving the console tears its terminal down and kills the session (an interactive rebase, a push): stay.
+        if terminalActive, oldValue == .console { route = .console; notify(L("terminalBusyStay"), icon: "terminal.fill", destructive: true); return }
+        autoSelectFile(); if route.isChanges { lastChangesRoute = route }; refreshChangeTree()
+    } }
     /// Last way of viewing Changes (list or review); the sidebar item reopens it.
     @ObservationIgnored var lastChangesRoute: WorkspaceRoute = UserDefaults.standard.string(forKey: "changesView") == WorkspaceRoute.review.rawValue ? .review : .changes {
         didSet { UserDefaults.standard.set(lastChangesRoute.rawValue, forKey: "changesView") }
@@ -77,6 +86,8 @@ import QuartzCore
     }
     var busy = false
     var terminalActive = false
+    /// Bumped after every commit created or amended from the app (the composer resets "amend" on it).
+    private(set) var commitsCreated = 0
     var status = L("ready")
     var errorMessage: String?
     var selectedCommit: GitCommit?
@@ -200,7 +211,14 @@ import QuartzCore
     private func restoreAccess(_ path: String) {
         guard accessing[path] == nil, let data = (UserDefaults.standard.dictionary(forKey: "repositoryBookmarks") as? [String: Data])?[path] else { return }
         var stale = false
-        if let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale) { rememberAccess(url) }
+        guard let url = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale) else { return }
+        rememberAccess(url)
+        // A stale bookmark still resolves once; renew it under the path the user knows, and drop entries whose
+        // folder is gone and that no recent repository uses.
+        var bookmarks = UserDefaults.standard.dictionary(forKey: "repositoryBookmarks") as? [String: Data] ?? [:]
+        if stale, let renewed = try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) { bookmarks[path] = renewed }
+        for key in bookmarks.keys where key != path && !recent.contains(key) && !FileManager.default.fileExists(atPath: key) { bookmarks[key] = nil }
+        UserDefaults.standard.set(bookmarks, forKey: "repositoryBookmarks")
     }
     /// QA builds never touch the user's recent list, even when launched without a QA script.
     static var recordsRecents: Bool {
@@ -220,6 +238,7 @@ import QuartzCore
             repository = result
             startWatching(result.root)
             selectedFile = nil; selectedCommit = result.commits.first; diff = ""; message = ""
+            lastRewrite = nil; lastRefreshFailure = nil; trackedFiles = []; trackedKey = ""; syncMarks = [:]
             // QA runs share this app's preferences; they must not alter the user's recent list.
             if WorkspaceStore.recordsRecents {
                 recent.removeAll { $0 == result.root }; recent.insert(result.root, at: 0); recent = Array(recent.prefix(12))
@@ -234,10 +253,17 @@ import QuartzCore
     /// Reads whether the provider really blocks direct pushes to main and caches it for the engine.
     /// Without a token (or permission to read the rules) the state stays unknown and main is not blocked.
     func syncRemoteProtection() async {
-        guard let snapshot = repository, let hosted = try? HostedRepository(remote: snapshot.remote),
-              (try? ProviderVault.load(hosted.provider)) ?? nil != nil else { return }
-        let protected = await HostingClient().branchProtected(hosted, branch: snapshot.primary)
-        let value = protected.map { $0 ? "true" : "false" } ?? "unknown"
+        guard let snapshot = repository, let hosted = try? HostedRepository(remote: snapshot.remote) else { return }
+        await ProviderAccounts.shared.ensureLoaded()
+        guard ProviderAccounts.shared.isConnected(hosted.provider) else { return }
+        // Offline, an expired token or a rate limit say nothing about the rule: keep what was cached instead of
+        // silently unprotecting main.
+        let value: String
+        switch await HostingClient().branchProtection(hosted, branch: snapshot.primary) {
+        case let .known(protected): value = protected ? "true" : "false"
+        case .unknown: value = "unknown"
+        case .unreachable: return
+        }
         let current = snapshot.mainProtectionRemote ?? ""
         guard repository?.root == snapshot.root, value != (current.isEmpty ? "unknown" : current) else { return }
         _ = try? await engine.call(["method": "setRemoteProtection", "path": snapshot.root, "value": value]) as String
@@ -247,9 +273,14 @@ import QuartzCore
     /// `filesOnly` reads just `git status`: enough for working-tree edits, which cannot move refs or history.
     func refresh(filesOnly: Bool = false) async {
         guard repository != nil, !terminalActive else { return }
-        if refreshInFlight { refreshQueued = true; if !filesOnly { queuedFull = true }; return }
+        if refreshInFlight {
+            refreshQueued = true; if !filesOnly { queuedFull = true }
+            // Callers act on the result right after (open the next conflict, show a toast): wait for it.
+            await withCheckedContinuation { refreshWaiters.append($0) }
+            return
+        }
         refreshInFlight = true
-        defer { refreshInFlight = false }
+        defer { refreshInFlight = false; let waiting = refreshWaiters; refreshWaiters = []; for waiter in waiting { waiter.resume() } }
         var full = !filesOnly
         repeat {
             refreshQueued = false
@@ -267,7 +298,9 @@ import QuartzCore
             try? await Task.sleep(for: delay)
             guard let self else { return }
             self.scheduledRefresh = nil
-            guard !Task.isCancelled, !self.busy, !self.terminalActive else { return }
+            guard !Task.isCancelled, !self.terminalActive else { return }
+            // Busy: the running operation may not cover this change (an editor save, an external write). Try again.
+            if self.busy { self.scheduleRefresh(gitState: false); return }
             self.statsDirty = true
             let full = self.scheduledFull; self.scheduledFull = false
             await self.refresh(filesOnly: !full)
@@ -287,7 +320,7 @@ import QuartzCore
                 try? await Task.sleep(for: .seconds(300))
                 guard let self, !Task.isCancelled else { return }
                 let enabled = UserDefaults.standard.object(forKey: "autoFetch") as? Bool ?? true
-                guard enabled, let root = self.repository?.root, !self.busy, !self.terminalActive, !(self.repository?.remote.isEmpty ?? true) else { continue }
+                guard enabled, let root = self.repository?.root, !self.busy, !self.terminalActive, !self.stagingInFlight, !(self.repository?.remote.isEmpty ?? true) else { continue }
                 if (try? await self.engine.call(["method": "action", "path": root, "action": "fetch", "value": ""]) as String) != nil { self.lastFetch = Date() }
                 await self.refresh()
                 await self.syncRemoteProtection()
@@ -305,7 +338,10 @@ import QuartzCore
                 current.files = files; result = current
             } else {
                 result = try await engine.call(["method": "snapshot", "path": root, "limit": historyLimit])
+                // Another repository was opened while this snapshot was being read: it must not replace it.
+                guard storedRepository?.root == root else { return }
             }
+            lastRefreshFailure = nil
             #if DEBUG || BUTAKE_QA
             NSLog("BUTAKE_QA refresh files=%d changed=%d", result.files.count, result != repository ? 1 : 0)
             #endif
@@ -332,11 +368,15 @@ import QuartzCore
                 } else { selectedFile = nil; diff = "" }
             }
             if let selected = selectedCommit, selected.hash != result.commits.first(where: { $0.hash == selected.hash })?.hash { selectedCommit = result.commits.first }
-        } catch { fail(error) }
+        } catch {
+            // A folder that was moved or unmounted fails on every file event: show the alert once, then only the status.
+            lastRefreshChanged = false
+            if lastRefreshFailure == error.localizedDescription { status = L("operationFailed") } else { lastRefreshFailure = error.localizedDescription; fail(error) }
+        }
     }
     /// Line stats are the slowest read (a full numstat), so they load after the list and only when dirty.
     func requestStats() {
-        guard statsDirty || fileStats.isEmpty, !statsInFlight, let root = repository?.root, !files.isEmpty else { if files.isEmpty == true && !fileStats.isEmpty { fileStats = [:]; for box in statBoxes.values { box.value = nil } }; return }
+        guard statsDirty || (fileStats.isEmpty && statsLoadedRevision != filesRevision), !statsInFlight, let root = repository?.root, !files.isEmpty else { if files.isEmpty == true && !fileStats.isEmpty { fileStats = [:]; for box in statBoxes.values { box.value = nil } }; return }
         // While an agent keeps writing, line stats reload at most every 1.5 s: each load re-renders every visible row.
         let wait = 1.5 - Date().timeIntervalSince(lastStatsLoad)
         if wait > 0, !fileStats.isEmpty {
@@ -348,7 +388,10 @@ import QuartzCore
         statsInFlight = true; statsDirty = false
         Task {
             defer { statsInFlight = false; if statsDirty { requestStats() } }
+            let requested = filesRevision
             guard let entries: [FileStatEntry] = try? await engine.call(["method": "stats", "path": root]) else { return }
+            guard repository?.root == root else { statsDirty = true; return }
+            statsLoadedRevision = requested
             var result: [String: LineStats] = [:]
             result.reserveCapacity(entries.count)
             for entry in entries { result[LineStats.key(entry.path, staged: entry.staged)] = LineStats(additions: entry.additions, deletions: entry.deletions) }
@@ -438,9 +481,15 @@ import QuartzCore
     }
     /// Combined line stats (staged + unstaged) for one file.
     func totalStats(_ file: ChangedFile) -> LineStats? {
-        let a = stats(for: file, staged: false), b = stats(for: file, staged: true)
+        WorkspaceStore.combined(file, unstaged: stats(for: file, staged: false), staged: stats(for: file, staged: true))
+    }
+    /// Staged plus unstaged. For a new file in two parts the sum would count the staged copy and then the edits to
+    /// it (+30 −10 for a 20-line file): what matters is the net result, every line of the new file.
+    nonisolated static func combined(_ file: ChangedFile, unstaged a: LineStats?, staged b: LineStats?) -> LineStats? {
         if a == nil && b == nil { return nil }
-        return LineStats(additions: (a?.additions ?? 0) + (b?.additions ?? 0), deletions: (a?.deletions ?? 0) + (b?.deletions ?? 0))
+        let additions = (a?.additions ?? 0) + (b?.additions ?? 0), deletions = (a?.deletions ?? 0) + (b?.deletions ?? 0)
+        if file.index == "A" && file.worktree == "M", a != nil, b != nil { return LineStats(additions: max(0, additions - deletions), deletions: 0) }
+        return LineStats(additions: additions, deletions: deletions)
     }
     /// Changes › Carpetas. Built in the background: sorting and grouping thousands of paths on the main thread froze
     /// the window ~170–350 ms on every stage or refresh. The view keeps showing the previous tree until the new one lands.
@@ -458,9 +507,7 @@ import QuartzCore
             let parsed = SearchQuery(query)
             let filtered = parsed.isEmpty ? files : files.filter { parsed.matches(path: $0.path) }
             let nodes = ChangeNode.tree(filtered) { file in
-                let a = stats[LineStats.key(file.path, staged: false)], b = stats[LineStats.key(file.path, staged: true)]
-                if a == nil && b == nil { return nil }
-                return LineStats(additions: (a?.additions ?? 0) + (b?.additions ?? 0), deletions: (a?.deletions ?? 0) + (b?.deletions ?? 0))
+                WorkspaceStore.combined(file, unstaged: stats[LineStats.key(file.path, staged: false)], staged: stats[LineStats.key(file.path, staged: true)])
             }
             let sorted = filtered.map { ($0.path.lowercased(), $0) }.sorted { $0.0 < $1.0 }.map(\.1)
             await MainActor.run { [weak self] in
@@ -511,7 +558,7 @@ import QuartzCore
             (scope == nil || scope!.contains(commit.hash)) && query.matches(author: commit.author)
                 && (query.text.isEmpty || "\(commit.subject) \(commit.author) \(commit.hash) \(commit.refs)".localizedCaseInsensitiveContains(query.text))
         }
-        let model = HistoryModel(commits: commits, graph: CommitGraph(commits: commits, localBranches: refs.localBranches))
+        let model = HistoryModel(commits: commits, graph: CommitGraph(commits: commits, localBranches: refs.localBranches, pruneMissingParents: scope != nil || !query.isEmpty))
         historyCache = (key, model)
         return model
     }
@@ -559,7 +606,8 @@ import QuartzCore
         guard key != syncMarksKey else { return }
         syncMarksKey = key
         Task {
-            guard let sync: BranchSyncResult = try? await engine.call(["method": "branchSync", "path": repo.root, "left": repo.primary, "right": other]) else { return }
+            guard let sync: BranchSyncResult = try? await engine.call(["method": "branchSync", "path": repo.root, "left": repo.primary, "right": other]) else { if syncMarksKey == key { syncMarksKey = "" }; return }
+            guard syncMarksKey == key, repository?.root == repo.root else { return }
             var marks: [String: SyncMark] = [:]
             for commit in sync.onlyLeft { marks[commit.hash] = .onlyPrimary(repo.primary) }
             for commit in sync.onlyRight { marks[commit.hash] = .onlyOther(other) }
@@ -579,7 +627,9 @@ import QuartzCore
             NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
             await refresh(); return nil
         } catch let failure as EngineFailure where failure.code == "rewrite_conflicts" {
-            lastRewrite = (failure.detail.components(separatedBy: "Respaldo: ").last ?? "", candidates.branch)
+            // The backup ref itself, wherever it appears: not tied to the wording (or language) of the message.
+            let backup = failure.detail.range(of: #"refs/butake/backup/[^\s]+"#, options: .regularExpression).map { String(failure.detail[$0]) } ?? ""
+            lastRewrite = backup.isEmpty ? nil : (backup, candidates.branch)
             await refresh(); resolveNextConflict(); return failure.detail
         } catch {
             await refresh(); return error.localizedDescription
@@ -588,6 +638,7 @@ import QuartzCore
     func undoRewrite() {
         guard let root = repository?.root, let last = lastRewrite, !busy, !terminalActive else { return }
         Task {
+            guard !busy, !terminalActive, repository?.root == root else { return }
             busy = true; defer { busy = false }
             do {
                 if repository?.operation == "rebase" { let _: String = try await engine.call(["method": "action", "path": root, "action": "rebase_abort", "confirmed": true]) }
@@ -629,7 +680,7 @@ import QuartzCore
         if candidates.count == 1 { discard(candidates[0]); return }
         let untracked = candidates.filter { $0.index == "?" }.count
         let preview = candidates.prefix(12).map { $0.path }.joined(separator: "\n") + (candidates.count > 12 ? "\n…" : "")
-        pending = PendingOperation(title: String(format: L("discardManyTitle"), candidates.count), root: root, action: "discardMany", value: candidates.map(\.path).joined(separator: "\n"),
+        pending = PendingOperation(title: String(format: L("discardManyTitle"), candidates.count), root: root, action: "discardMany", paths: candidates.map(\.path),
                                    preview: preview, destructive: true, detail: L(untracked > 0 ? "discardManyUntrackedDetail" : "discardManyDetail"))
     }
     /// History filtered to the commits that touched one file: written as a search filter, so it is one system.
@@ -653,7 +704,7 @@ import QuartzCore
         if key != trackedKey {
             trackedKey = key
             trackedTask = Task { [weak self] in
-                guard let self, let text = try? await self.engine.query(root, ["ls-files"]) else { return }
+                guard let self, let text = try? await self.engine.query(root, ["ls-files"]), self.trackedKey == key else { return }
                 self.trackedFiles = text.split(separator: "\n").map(String.init)
             }
         }
@@ -680,11 +731,14 @@ import QuartzCore
     /// The confirmation shown for an action, shared by the main window and the notch panel.
     func confirmation(for action: String, value: String = "") -> PendingOperation? {
         guard let root = repository?.root else { return nil }
-        var operation = PendingOperation(title: L(action), root: root, action: action, value: value, preview: "git \(action.replacingOccurrences(of: "_", with: " ")) \(value)")
+        var operation = PendingOperation(title: L(action), root: root, action: action, value: value, preview: "git \(action == "cherry_pick" ? "cherry-pick" : action.replacingOccurrences(of: "_", with: " ")) \(value)")
         // Unprotected main is allowed, but a direct push to it deserves a visible warning.
         if action == "push" && repository?.branch == repository?.primary { operation.destructive = true; operation.detail = L("pushToMainWarning") }
-        if action == "push", let branch = repository?.branch { operation.preview = "git push · \(branch)" + (repository?.ahead ?? 0 > 0 ? " (\(repository!.ahead) commits)" : "") }
-        if action == "pull", let branch = repository?.branch { operation.preview = "git pull --ff-only · \(branch)" + (repository?.behind ?? 0 > 0 ? " (\(repository!.behind) commits)" : "") }
+        func commits(_ count: Int) -> String { count > 0 ? " (" + String(format: L(count == 1 ? "commitCountOne" : "commitCountMany"), count) + ")" : "" }
+        // The destination is explicit: the branch's upstream, or origin when it will be published for the first time.
+        let upstream = repository?.branches.first { $0.name == repository?.branch }?.upstream ?? ""
+        if action == "push", let branch = repository?.branch { operation.preview = "git push · \(branch) → \(upstream.isEmpty ? "\(repository?.remotes?.first ?? "origin")/\(branch)" : upstream)" + commits(repository?.ahead ?? 0) }
+        if action == "pull", let branch = repository?.branch { operation.preview = "git pull --ff-only · \(upstream.isEmpty ? branch : upstream) → \(branch)" + commits(repository?.behind ?? 0) }
         return operation
     }
     func action(_ action: String, value: String = "", confirm: Bool = false) {
@@ -701,6 +755,8 @@ import QuartzCore
     func perform(_ operation: PendingOperation) async {
         guard !busy && !terminalActive else { return }
         await stagingChain?.value  // never run another Git command on top of a pending stage
+        // Another operation may have started while waiting: two would run at once and the first to end cleared `busy`.
+        guard !busy && !terminalActive else { return }
         if operation.interactive {
             consoleCommand = operation.command ?? "status"; consoleArguments = operation.arguments; consolePlan = operation.plan
             terminalLaunch = TerminalLaunch(root: operation.root, command: consoleCommand, arguments: consoleArguments, plan: consolePlan)
@@ -709,11 +765,13 @@ import QuartzCore
         busy = true; runningAction = operation.action ?? operation.command
         defer { busy = false; runningAction = nil }
         if operation.action == "discardMany" {
-            let paths = operation.value.split(separator: "\n").map(String.init)
-            var done = 0
+            let paths = operation.paths
+            var done = 0; var failures: [String] = []
             for path in paths {
-                if (try? await engine.call(["method": "action", "path": operation.root, "action": "discard", "value": path, "confirmed": true]) as String) != nil { done += 1 }
+                do { let _: String = try await engine.call(["method": "action", "path": operation.root, "action": "discard", "value": path, "confirmed": true]); done += 1 }
+                catch { failures.append("\(path): \(error.localizedDescription)") }
             }
+            if !failures.isEmpty { errorMessage = failures.prefix(8).joined(separator: "\n") + (failures.count > 8 ? "\n…" : "") }
             if let selected = selectedFile, paths.contains(selected.path) { selectedFile = nil; diff = "" }
             status = L("operationComplete")
             notify(String(format: L("discardedCount"), done), icon: "arrow.uturn.backward.circle.fill")
@@ -736,7 +794,7 @@ import QuartzCore
             else { parameters.merge(["method": "run", "command": operation.command ?? "status", "arguments": operation.arguments]) { _, b in b } }
             let _: String = try await engine.call(parameters)
             if operation.action == "fetch" || operation.action?.hasPrefix("pull") == true { lastFetch = Date() }
-            if operation.action == "commit" { message = ""; NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now) }
+            if operation.action == "commit" || operation.command == "commit" { message = ""; commitsCreated += 1; NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now) }
             if operation.action == "discard", selectedFile?.path == operation.value { selectedFile = nil; diff = "" }
             status = L("operationComplete")
             notify(WorkspaceStore.successMessage(operation), icon: operation.destructive ? "arrow.uturn.backward.circle.fill" : "checkmark.circle.fill")
@@ -749,7 +807,7 @@ import QuartzCore
         } catch { fail(error) }
         await refresh()
     }
-    func prepare(_ command: String, arguments: String = "", interactive: Bool = false, plan: RebasePlan? = nil) async {
+    func prepare(_ command: String, arguments: String = "", interactive: Bool = false, plan: RebasePlan? = nil, destructive: Bool = false) async {
         guard let root = repository?.root, !busy && !terminalActive else { return }
         do {
             let prepared: PreparedCommand = try await engine.call(["method": "prepare", "path": root, "command": command, "arguments": arguments])
@@ -757,14 +815,23 @@ import QuartzCore
                 let value = try JSONSerialization.jsonObject(with: JSONEncoder().encode(plan))
                 let _: String = try await engine.call(["method": "validateRebase", "path": root, "plan": value])
             }
-            pending = PendingOperation(title: L("executeCommand"), root: root, command: command, arguments: arguments, preview: prepared.preview, plan: plan, interactive: interactive)
+            pending = PendingOperation(title: L("executeCommand"), root: root, command: command, arguments: arguments, preview: prepared.preview, plan: plan, interactive: interactive, destructive: destructive, detail: destructive ? L("resetHardDetail") : nil)
         } catch { fail(error) }
     }
+    /// The terminal view was torn down: its launch is spent. Showing the console again must never run it a second time.
+    func terminalViewRemoved(_ id: UUID) { if terminalLaunch?.id == id { terminalLaunch = nil } }
     func terminalDidFinish(_ code: Int32?) {
         terminalActive = false; status = code == 0 ? L("operationComplete") : "\(L("exitCode")): \(code ?? -1)"
         if code == 0 { notify(L("operationComplete")) } else { notify(status, icon: "exclamationmark.triangle.fill", destructive: true) }
         Task { await refresh() }
     }
+    /// New since the last commit, staged when it was created (an IDE adding a copy) and edited afterwards (`AM`).
+    /// Its unstaged patch alone looks like an edit of an existing file, so that side shows the whole new file.
+    nonisolated static func isNewInParts(_ file: ChangedFile) -> Bool { file.index == "A" && file.worktree == "M" }
+    /// The selected file is new and has a staged part and an unstaged part.
+    var selectedNewInParts: Bool { selectedFile.map(WorkspaceStore.isNewInParts) ?? false }
+    /// The diff on screen is the whole new file (not a patch that can be staged block by block).
+    var showingWholeNewFile: Bool { selectedNewInParts && !stagedSelection }
     func selectFile(_ file: ChangedFile, staged: Bool) { loadDiff(file, staged: staged, keepCurrent: false) }
     private func loadDiff(_ file: ChangedFile, staged: Bool, keepCurrent: Bool) {
         guard let root = repository?.root else { return }
@@ -777,7 +844,9 @@ import QuartzCore
         }
         Task {
             do {
-                let value: String = try await engine.call(["method": "diff", "path": root, "file": file.path, "staged": staged])
+                var parameters: [String: Any] = ["method": "diff", "path": root, "file": file.path, "staged": staged]
+                if WorkspaceStore.isNewInParts(file), !staged { parameters["whole"] = true }
+                let value: String = try await engine.call(parameters)
                 if generation == diffGeneration { diffArrived = generation; if diff != value { diff = value } }
             } catch { if generation == diffGeneration { diffArrived = generation; fail(error) } }
         }
@@ -815,12 +884,16 @@ import QuartzCore
         }
     }
     func stageHunk(_ index: Int) {
-        guard let root = repository?.root, let file = selectedFile, !busy && !terminalActive else { return }
+        guard let root = repository?.root, let file = selectedFile, !busy && !terminalActive, !showingWholeNewFile else { return }
         let staged = stagedSelection
+        // The header of the block on screen: if the file changed since, the engine refuses instead of staging another block.
+        let headers = diff.components(separatedBy: "\n").filter { $0.hasPrefix("@@ ") }
+        var parameters: [String: Any] = ["method": "stageHunk", "path": root, "file": file.path, "staged": staged, "index": index]
+        if headers.indices.contains(index) { parameters["expected"] = headers[index] }
         Task {
             await enqueueStaging { [self] in
                 do {
-                    let _: String = try await engine.call(["method": "stageHunk", "path": root, "file": file.path, "staged": staged, "index": index])
+                    let _: String = try await engine.call(parameters)
                     status = L("operationComplete")
                 } catch { fail(error) }
                 await refresh()
@@ -846,7 +919,7 @@ import QuartzCore
         let key = "done_\(action)"; let text = L(key)
         return text == key ? L("operationComplete") : text
     }
-    func inspect(_ command: String, arguments: String = "") { consoleCommand = command; consoleArguments = arguments; consolePlan = nil; route = .console }
+    func inspect(_ command: String, arguments: String = "") { guard !terminalActive else { route = .console; return }; consoleCommand = command; consoleArguments = arguments; consolePlan = nil; terminalLaunch = nil; route = .console }
 
     #if DEBUG || BUTAKE_QA
     /// QA-only: replays inspector button actions on a temporary repository so presentation can be checked without driving the mouse.

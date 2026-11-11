@@ -44,7 +44,7 @@ struct BranchSyncView: View {
                 summary(result)
                 Divider()
                 if result.onlyLeft.isEmpty && result.onlyRight.isEmpty {
-                    ContentUnavailableView(L("inSync"), systemImage: "checkmark.seal", description: Text(String(format: L("alreadyBoth")) + ": \(result.equivalentLeft.count)"))
+                    EmptyState(L("inSync"), systemImage: "checkmark.seal", description: Text(String(format: L("alreadyBoth")) + ": \(result.equivalentLeft.count)"))
                         .frame(maxHeight: .infinity).transition(.opacity)
                 } else {
                     // Plain SwiftUI columns: an AppKit split view here took over the window's drawing.
@@ -58,7 +58,7 @@ struct BranchSyncView: View {
             } else if loading || fetching {
                 VStack(spacing: 10) { Spinner(size: 18); if fetching { Text(L("syncFetching")).font(.uiCaption).foregroundStyle(.secondary) } }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ContentUnavailableView(L("syncTitle"), systemImage: "arrow.left.arrow.right.circle", description: Text(error.isEmpty ? L("syncExplain") : error)).frame(maxHeight: .infinity)
+                EmptyState(L("syncTitle"), systemImage: "arrow.left.arrow.right.circle", description: Text(error.isEmpty ? L("syncExplain") : error)).frame(maxHeight: .infinity)
             }
         }
         .onAppear(perform: chooseDefaults)
@@ -153,11 +153,15 @@ struct BranchSyncView: View {
             fetching = false
         }
         loading = true; defer { loading = false }
+        let asked = (left, right)
+        // An answer for branches (or a repository) that are no longer chosen is dropped.
+        func current() -> Bool { !Task.isCancelled && asked == (left, right) && store.repository?.root == root }
         do {
             let value: BranchSyncResult = try await store.engine.call(["method": "branchSync", "path": root, "left": side(left).ref, "right": side(right).ref])
+            guard current() else { return }
             result = value; error = ""
             selectedLeft.formIntersection(value.onlyLeft.map(\.hash)); selectedRight.formIntersection(value.onlyRight.map(\.hash))
-        } catch { self.error = error.localizedDescription; result = nil }
+        } catch { guard current() else { return }; self.error = error.localizedDescription; result = nil }
     }
 }
 
@@ -213,14 +217,14 @@ private struct SyncColumn: View {
             }.padding(.horizontal, 14).frame(height: 44)
             Divider()
             if commits.isEmpty {
-                ContentUnavailableView(L("nothingMissing"), systemImage: "checkmark.circle").frame(maxHeight: .infinity)
+                EmptyState(L("nothingMissing"), systemImage: "checkmark.circle").frame(maxHeight: .infinity)
             } else {
                 List(commits) { commit in
                     SyncRow(commit: commit, isOn: Binding(get: { selection.contains(commit.hash) }, set: { on in if on { selection.insert(commit.hash) } else { selection.remove(commit.hash) } }), onView: { store.showCommit(commit.hash, title: commit.subject) })
                         .contextMenu {
                             Button(L("viewCommit")) { store.showCommit(commit.hash, title: commit.subject) }
                             Button(L("copyHash")) { store.copyToPasteboard(commit.hash) }
-                            Button(String(format: L("copyTo"), target)) { store.copyCommits([commit], to: target) }.disabled(store.isProtected(target) || store.busy || blocked != nil)
+                            Button(String(format: L("copyTo"), target)) { store.copyCommits([commit], to: target) }.disabled(store.isProtected(target) || store.busy || store.terminalActive || !store.files.isEmpty || blocked != nil)
                         }
                         .accessibilityIdentifier("sync.commit.\(commit.shortHash)")
                         .accessibilityAction(named: L("viewCommit")) { store.showCommit(commit.hash, title: commit.subject) }

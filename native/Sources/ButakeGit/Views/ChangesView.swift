@@ -36,20 +36,29 @@ struct ChangesView: View {
                 CommitComposer(store: store, amend: $amend, onCommit: createCommit)
             }.frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
             VStack(spacing: 0) {
-                HStack { Label(store.selectedFile?.path ?? L("diff"), systemImage: "doc.text").font(.ui(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).contentTransition(.opacity); Spacer(); if let file = store.selectedFile, let stats = store.stats(for: file, staged: store.stagedSelection) { StatsBadge(stats: stats) }; if store.selectedFile != nil, case let hunks = store.diff.components(separatedBy: "\n@@ ").count - 1 + (store.diff.hasPrefix("@@ ") ? 1 : 0), hunks > 0 {
+                HStack { Label(store.selectedFile?.path ?? L("diff"), systemImage: "doc.text").font(.ui(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).contentTransition(.opacity); Spacer(); if let file = store.selectedFile, let stats = store.showingWholeNewFile ? store.totalStats(file) : store.stats(for: file, staged: store.stagedSelection) { StatsBadge(stats: stats) }; if store.selectedFile != nil, !store.showingWholeNewFile, case let hunks = store.diff.components(separatedBy: "\n@@ ").count - 1 + (store.diff.hasPrefix("@@ ") ? 1 : 0), hunks > 0 {
                     // Same as the diff's right-click «Preparar bloque», reachable without a pointer gesture.
                     Menu(L("hunks")) {
                         ForEach(0..<min(hunks, 60), id: \.self) { index in
                             Button("\(L(store.stagedSelection ? "hunkUnstage" : "hunkStage")) \(index + 1)") { store.stageHunk(index) }.accessibilityIdentifier("diff.hunk.\(index + 1)")
                         }
                     }.controlSize(.small).fixedSize().disabled(store.busy || store.terminalActive).accessibilityIdentifier("diff.hunks")
-                }; if let file = store.selectedFile, !file.conflict { Button { editing = FileEditorTarget(path: file.path) } label: { Label(L("editFile"), systemImage: "pencil") }.controlSize(.small).disabled(!store.canWrite) }; if store.selectedFile != nil { Text(L(store.stagedSelection ? "staged" : "unstaged")).font(.uiCaption2).foregroundStyle(.secondary) } }.padding(.horizontal, 16).frame(height: 39).background(Brand.bar)
+                }; if let file = store.selectedFile, !file.conflict { Button { editing = FileEditorTarget(path: file.path) } label: { Label(L("editFile"), systemImage: "pencil") }.controlSize(.small).disabled(!store.canWrite).accessibilityIdentifier("diff.editFile") }; if store.selectedFile != nil { Text(L(store.stagedSelection ? "staged" : "unstaged")).font(.uiCaption2).foregroundStyle(.secondary) } }.padding(.horizontal, 16).frame(height: 39).background(Brand.bar)
                 Divider()
+                if store.selectedNewInParts {
+                    // A new file staged as a copy and edited afterwards: say which part is on screen.
+                    Label(L(store.stagedSelection ? "newFilePartsStaged" : "newFilePartsWhole"), systemImage: "info.circle").font(.uiCaption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 7).background(Brand.info.opacity(0.08))
+                        .accessibilityIdentifier("diff.newFileNotice")
+                    Divider()
+                }
                 if store.selectedFile != nil && store.diff.isEmpty { Spinner(size: 14).frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity) }
-                else if store.selectedFile != nil { DiffView(text: store.diff, path: store.selectedFile?.path, onHunk: store.busy || store.terminalActive ? nil : { store.stageHunk($0) }, hunkTitle: L(store.stagedSelection ? "hunkUnstage" : "hunkStage")) }
-                else { ContentUnavailableView(L(store.files.isEmpty == true ? "clean" : "diff"), systemImage: store.files.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass", description: Text(L(store.files.isEmpty == true ? "cleanDetail" : "chooseFile"))).frame(maxHeight: .infinity) }
+                else if store.selectedFile != nil { DiffView(text: store.diff, path: store.selectedFile?.path, onHunk: store.busy || store.terminalActive || store.showingWholeNewFile ? nil : { store.stageHunk($0) }, hunkTitle: L(store.stagedSelection ? "hunkUnstage" : "hunkStage")) }
+                else { EmptyState(L(store.files.isEmpty == true ? "clean" : "diff"), systemImage: store.files.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass", description: Text(L(store.files.isEmpty == true ? "cleanDetail" : "chooseFile"))).frame(maxHeight: .infinity) }
             }.frame(minWidth: 310).animation(.easeOut(duration: 0.15), value: store.diff.isEmpty)
         }.sheet(item: $editing) { target in FileEditorView(store: store, path: target.path).themedSheet() }
+        // The amend went through: the next commit is a normal one again.
+        .onChange(of: store.commitsCreated) { _, _ in amend = false }
     }
     private func createCommit() {
         if amend { Task { await store.prepare("commit", arguments: "--amend -m \(shellQuote(store.message))") } }
@@ -208,12 +217,15 @@ private struct FileRow: View {
     @State private var hovering = false
     var code: String { let code = staged ? file.index : file.worktree; return code == "?" ? "A" : code }
     var color: Color { file.kind.color }
+    /// The unstaged row of a new file in two parts counts the whole file, like the diff it opens (not "+9 −10" next
+    /// to «Nuevo»). Only those rare rows read the shared stats; the rest keep their own observable cell.
+    var rowStats: LineStats? { !staged && WorkspaceStore.isNewInParts(file) ? store.totalStats(file) : store.statBox(file, staged: staged).value }
     var body: some View {
         HStack(spacing: 8) {
             Group { if file.conflict { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning).font(.ui(size: 12)) } else { FileTypeIcon(path: file.path, size: 15, monochrome: onAccent) } }.frame(width: 16)
             VStack(alignment: .leading, spacing: 3) { Text(file.name).font(.ui(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).strikethrough(code == "D", color: .secondary); if file.kind == .renamed, let original = file.originalPath { Text(String(format: L("movedFrom"), original)).font(.ui(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head) } else if !file.directory.isEmpty { Text(file.directory).font(.ui(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) } }
             Spacer(minLength: 3)
-            if let stats = store.statBox(file, staged: staged).value, !hovering { StatsBadge(stats: stats, inverted: onAccent).transition(.opacity) }
+            if let stats = rowStats, !hovering { StatsBadge(stats: stats, inverted: onAccent).transition(.opacity) }
             else if file.index == "?" && !hovering { Text(L("newFile")).font(.ui(size: 9, weight: .medium)).foregroundStyle(.secondary) }
             if hovering && !staged && !file.conflict {
                 Button { store.discard(file) } label: { Image(systemName: "arrow.uturn.backward.circle").font(.ui(size: 13)) }.buttonStyle(.borderless).foregroundStyle(onAccent ? Color.white : Color.secondary).help(L("discardChanges")).disabled(store.busy || store.terminalActive)
@@ -236,7 +248,7 @@ private struct FileRow: View {
     private var accessibilitySummary: String {
         var parts = [L(staged ? "staged" : "unstaged"), file.kind.title]
         if file.conflict { parts.append(L("conflict")) }
-        if let stats = store.statBox(file, staged: staged).value, !stats.binary { parts.append("+\(stats.additions ?? 0) −\(stats.deletions ?? 0)") }
+        if let stats = rowStats, !stats.binary { parts.append("+\(stats.additions ?? 0) −\(stats.deletions ?? 0)") }
         return parts.joined(separator: ", ")
     }
 }
@@ -318,7 +330,8 @@ private struct ConflictsPane: View {
                 Spacer()
                 Button(L("resolveNow")) { store.resolveNextConflict() }.controlSize(.small).buttonStyle(.borderedProminent).tint(Brand.warning).accessibilityIdentifier("conflicts.resolveNext")
             }
-            ForEach(files) { file in
+            // Not lazy and always mounted: a huge conflicted merge shows the first ones (the rest follow as they are resolved).
+            ForEach(files.prefix(40)) { file in
                 Button { store.resolving = file } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.triangle.merge").foregroundStyle(Brand.warning).frame(width: 15)

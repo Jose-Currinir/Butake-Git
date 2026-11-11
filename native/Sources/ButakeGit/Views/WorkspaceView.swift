@@ -307,7 +307,7 @@ struct OperationConfirmation: View {
             Text(operation.detail ?? L("confirmationDetail")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             LabeledContent(L("repository"), value: operation.root).font(.uiCaption)
             Text(operation.preview).font(.system(.body, design: .monospaced)).textSelection(.enabled).accessibilityIdentifier("confirm.preview").frame(maxWidth: .infinity, alignment: .leading).padding(14).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("confirm.cancel"); Button(operation.destructive ? L("discard") : L("confirm"), role: operation.destructive ? .destructive : nil) { dismiss(); Task { await store.perform(operation) } }.buttonStyle(.borderedProminent).tint(operation.destructive ? Brand.danger : Brand.accent).keyboardShortcut(.defaultAction).accessibilityIdentifier("confirm.execute") }
+            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("confirm.cancel"); Button(operation.action?.hasPrefix("discard") == true ? L("discard") : operation.destructive ? operation.title : L("confirm"), role: operation.destructive ? .destructive : nil) { dismiss(); Task { await store.perform(operation) } }.buttonStyle(.borderedProminent).tint(operation.destructive ? Brand.danger : Brand.accent).keyboardShortcut(.defaultAction).accessibilityIdentifier("confirm.execute") }
         }.padding(26).frame(width: 540)
         .onAppear { appeared = true }
     }
@@ -317,7 +317,9 @@ struct NewBranchSheet: View {
     let store: WorkspaceStore
     @State private var name = ""
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) { Text(L("newBranch")).font(.uiTitle2.weight(.semibold)); TextField(L("branchName"), text: $name).textFieldStyle(.roundedBorder); HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }; Button(L("createAndSwitch")) { store.action("create_branch", value: name); dismiss() }.buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction) } }.padding(26).frame(width: 440)
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let problem = BranchNameRule.problem(trimmed, existing: store.repository?.branches.map(\.name) ?? [])
+        VStack(alignment: .leading, spacing: 20) { Text(L("newBranch")).font(.uiTitle2.weight(.semibold)); TextField(L("branchName"), text: $name).textFieldStyle(.roundedBorder).accessibilityIdentifier("newBranch.name"); if !trimmed.isEmpty, let problem { Text(problem).font(.uiCaption).foregroundStyle(Brand.danger).accessibilityIdentifier("newBranch.problem") }; HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.accessibilityIdentifier("newBranch.cancel"); Button(L("createAndSwitch")) { store.action("create_branch", value: trimmed); dismiss() }.buttonStyle(.borderedProminent).disabled(trimmed.isEmpty || problem != nil).keyboardShortcut(.defaultAction).accessibilityIdentifier("newBranch.create") } }.padding(26).frame(width: 440)
     }
 }
 struct OperationBanner: View {
@@ -397,12 +399,12 @@ struct PullAssistantView: View {
             OptionCard(icon: "archivebox", title: L("pull_autostash"), detail: L("pullAutostashDetail"), recommended: true, id: "pull.autostash") { dismiss(); store.pull("pull_autostash") }
             OptionCard(icon: "square.and.pencil", title: L("pullGoCommit"), detail: L("commitHelp"), id: "pull.goCommit") { dismiss(); store.route = .changes }
         case "pull_conflicts":
-            OptionCard(icon: "arrow.triangle.merge", title: L("resolveNow"), detail: String(format: L("conflictsPending"), store.changes.conflicts.count), recommended: true, id: "pull.resolve") { dismiss(); store.resolveNextConflict() }
-            OptionCard(icon: "arrow.uturn.backward", title: L("abortOperation"), detail: L("abortDetail"), id: "pull.abort") { dismiss(); store.abortOperation() }
+            OptionCard(icon: "arrow.triangle.merge", title: L("resolveNow"), detail: String(format: L("conflictsPending"), store.changes.conflicts.count), recommended: true, id: "pull.resolve") { dismiss(); afterSheet { store.resolveNextConflict() } }
+            OptionCard(icon: "arrow.uturn.backward", title: L("abortOperation"), detail: L("abortDetail"), id: "pull.abort") { dismiss(); afterSheet { store.abortOperation() } }
         case "pull_no_upstream":
-            OptionCard(icon: "arrow.up", title: L("pushNow"), detail: L("pushHelp"), recommended: true, id: "pull.push") { dismiss(); store.action("push", confirm: true) }
+            OptionCard(icon: "arrow.up", title: L("pushNow"), detail: L("pushHelp"), recommended: true, id: "pull.push") { dismiss(); afterSheet { store.action("push", confirm: true) } }
         default:
-            OptionCard(icon: "arrow.clockwise", title: L("retry"), detail: L("pullHelp"), id: "pull.retry") { dismiss(); store.action("pull", confirm: true) }
+            OptionCard(icon: "arrow.clockwise", title: L("retry"), detail: L("pullHelp"), id: "pull.retry") { dismiss(); afterSheet { store.action("pull", confirm: true) } }
         }
     }
 }
@@ -437,7 +439,8 @@ struct QueryDiffSheet: View {
     private var fileSections: [DiffSection] { sections.filter { $0.file != nil } }
     private func toggle(_ section: Int) { withAnimation(.snappy(duration: 0.2)) { if collapsed.contains(section) { collapsed.remove(section) } else { collapsed.insert(section) } } }
     var stats: LineStats {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        // By "\n" as a string: "\r\n" is a single Character, so splitting by Character missed every CRLF line.
+        let lines = text.components(separatedBy: "\n")
         return LineStats(additions: lines.filter { $0.hasPrefix("+") && !$0.hasPrefix("+++") }.count, deletions: lines.filter { $0.hasPrefix("-") && !$0.hasPrefix("---") }.count)
     }
     /// The title is a repository path when the sheet shows one file (commit file, file history).
@@ -484,7 +487,7 @@ struct QueryDiffSheet: View {
             }.padding(.horizontal, 16).padding(.vertical, 12).background(Brand.bar)
             Divider()
             if !loaded { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
-            else if text.isEmpty { ContentUnavailableView(L("noDifferences"), systemImage: "equal.circle", description: Text(L("noDifferencesDetail"))).frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity) }
+            else if text.isEmpty { EmptyState(L("noDifferences"), systemImage: "equal.circle", description: Text(L("noDifferencesDetail"))).frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity) }
             else if !sections.isEmpty { DiffSectionsView(sections: sections, collapsed: collapsed, toggle: toggle).transition(.opacity).accessibilityIdentifier("diff.content") }
             else { DiffView(text: text, path: isFile ? request.title : nil).transition(.opacity).accessibilityIdentifier("diff.content") }
         }
@@ -762,3 +765,17 @@ private struct FullScreenGlassToolbar: ViewModifier {
         if #available(macOS 15.0, *) { content.windowToolbarFullScreenVisibility(.onHover) } else { content }
     }
 }
+
+/// Branch names Git would reject, explained before running anything (Git's own message is in English).
+enum BranchNameRule {
+    static func problem(_ name: String, existing: [String]) -> String? {
+        if name.isEmpty { return nil }
+        if existing.contains(name) { return L("branchNameExists") }
+        let invalid = name.hasPrefix("-") || name.hasPrefix("/") || name.hasSuffix("/") || name.hasSuffix(".") || name.hasSuffix(".lock") || name.contains("..") || name.contains("//") || name.contains("@{") || name == "@"
+            || name.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F || " ~^:?*[\\".unicodeScalars.contains($0) }
+            || name.split(separator: "/").contains { $0.hasPrefix(".") }
+        return invalid ? L("branchNameInvalid") : nil
+    }
+}
+/// Runs once the sheet being dismissed is gone: presenting another sheet in the same update can lose it.
+@MainActor func afterSheet(_ action: @escaping @MainActor () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { action() } }

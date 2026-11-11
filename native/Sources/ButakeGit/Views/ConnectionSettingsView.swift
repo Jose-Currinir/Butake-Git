@@ -89,7 +89,11 @@ private struct ProviderAccountCard: View {
         }
         .padding(16).background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(saved ? Brand.accent.opacity(0.4) : Color.secondary.opacity(0.15)))
-        .onAppear { if let credentials = try? ProviderVault.load(provider) { saved = true; email = credentials.email } }
+        .task {
+            // Off the main thread: the Keychain may wait on a system prompt.
+            let provider = provider
+            if let credentials = await Task.detached(operation: { (try? ProviderVault.load(provider)) ?? nil }).value { saved = true; email = credentials.email }
+        }
     }
     /// The token is stored only after the provider accepts it.
     private func testAndSave() async {
@@ -102,7 +106,8 @@ private struct ProviderAccountCard: View {
         } catch { failed = true; status = error.localizedDescription }
     }
     private func testSaved() async {
-        guard let credentials = try? ProviderVault.load(provider) else { return }
+        let provider = provider
+        guard let credentials = await Task.detached(operation: { (try? ProviderVault.load(provider)) ?? nil }).value else { return }
         testing = true; defer { testing = false }
         do { connectedAs = try await client.verify(provider, credentials: credentials); failed = false; status = String(format: L("connectedAs"), connectedAs) }
         catch { failed = true; status = error.localizedDescription }

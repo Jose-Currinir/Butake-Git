@@ -8,6 +8,8 @@ struct ChangeTreePane: View {
     @State private var collapsed: Set<String> = []
     /// Checkbox clicks show at once; Git confirms and the next tree replaces these overrides.
     @State private var optimistic: [String: Bool] = [:]
+    /// Bumped on every checkbox click: restarts the cleanup timer so it never erases marks that were just set.
+    @State private var optimisticStamp = 0
     @FocusState private var focused: Bool
 
     private struct Row: Identifiable { let node: ChangeNode; let depth: Int; var id: String { node.id } }
@@ -23,6 +25,7 @@ struct ChangeTreePane: View {
                 TreeCheckbox(state: state(of: files)) { toggle(files) }
                     .disabled(files.isEmpty || store.busy || store.terminalActive)
                     .accessibilityLabel(L(state(of: files) == .all ? "unstageAll" : "stageAll"))
+                    .accessibilityIdentifier("tree.toggleAll")
                 Text(L("filesInCommit")).font(.ui(size: 11, weight: .semibold))
                 Text("\(stagedCount)/\(files.count)").font(.ui(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule())
@@ -30,7 +33,7 @@ struct ChangeTreePane: View {
                 Menu {
                     Button(L("expandAll")) { withAnimation(.snappy) { collapsed = [] } }
                     Button(L("collapseAll")) { withAnimation(.snappy) { collapsed = Set(rows.filter(\.node.isFolder).map(\.id)) } }
-                } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(L("more"))
+                } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(L("more")).accessibilityIdentifier("tree.more")
             }
             .padding(.horizontal, 13).frame(height: 35).background(Brand.bar)
             Divider()
@@ -72,7 +75,7 @@ struct ChangeTreePane: View {
                 return (inCommit ? Self.hasStaged(file) && !Self.hasUnstaged(file) : !Self.hasStaged(file)) == false
             }
         }
-        .task(id: optimistic.isEmpty) { if !optimistic.isEmpty { try? await Task.sleep(for: .seconds(3)); optimistic = [:] } }
+        .task(id: optimisticStamp) { if !optimistic.isEmpty { try? await Task.sleep(for: .seconds(3)); if !Task.isCancelled { optimistic = [:] } } }
         .onAppear { store.refreshChangeTree() }
         #if DEBUG || BUTAKE_QA
         // QA: presses the checkbox of a folder or file by its path, through the same toggle as a click.
@@ -103,6 +106,7 @@ struct ChangeTreePane: View {
         guard !candidates.isEmpty, !store.busy, !store.terminalActive else { return }
         let removing = state(of: candidates) == .all
         for file in candidates { optimistic[file.path] = !removing }
+        optimisticStamp &+= 1
         if removing { store.stageFiles(candidates.filter(Self.hasStaged), staged: true) }
         else { store.stageFiles(candidates.filter(Self.hasUnstaged), staged: false) }
     }

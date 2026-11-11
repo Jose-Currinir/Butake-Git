@@ -16,7 +16,7 @@ struct DictionaryView: View {
             HStack {
                 Picker(L("dictionary"), selection: $mode) { Text(L("commands")).tag("commands"); Text(L("concepts")).tag("concepts") }.accessibilityIdentifier("dictionary.dictionary").pickerStyle(.segmented).frame(width: 240)
                 Spacer()
-                if mode == "commands" { Menu { Button(L("commands")) { category = "" }.accessibilityIdentifier("dictionary.commands"); ForEach(["everyday", "administration", "inspection", "interop", "plumbing-write", "plumbing-read", "transport", "helpers"], id: \.self) { group in Button(L(group)) { category = group } } } label: { Label(category.isEmpty ? L("category") : L(category), systemImage: "line.3.horizontal.decrease") }.accessibilityIdentifier("dictionary.commands").menuStyle(.borderlessButton).fixedSize() }
+                if mode == "commands" { Menu { Button(L("commands")) { category = "" }.accessibilityIdentifier("dictionary.category.all"); ForEach(["everyday", "administration", "inspection", "interop", "plumbing-write", "plumbing-read", "transport", "helpers"], id: \.self) { group in Button(L(group)) { category = group }.accessibilityIdentifier("dictionary.category.\(group)") } } label: { Label(category.isEmpty ? L("category") : L(category), systemImage: "line.3.horizontal.decrease") }.accessibilityIdentifier("dictionary.commands").menuStyle(.borderlessButton).fixedSize() }
             }.padding(16).background(Brand.bar)
             Divider()
             if mode == "commands" {
@@ -30,11 +30,11 @@ struct DictionaryView: View {
                                 HStack(spacing: 8) { Text(L(entry.category)).font(.uiCaption); Text("·").foregroundStyle(.tertiary); Label(availability(entry), systemImage: installed(entry) ? "checkmark.circle.fill" : "info.circle").font(.uiCaption).foregroundStyle(installed(entry) ? Brand.accent : .secondary) }
                                 Divider()
                                 Text(L("catalogNote")).font(.uiCaption).foregroundStyle(.secondary)
-                                HStack { Button(L("inspectConsole")) { store.inspect(entry.name) }.accessibilityIdentifier("dictionary.inspectConsole").buttonStyle(.borderedProminent).disabled(!installed(entry)); Link(L("officialDocs"), destination: URL(string: entry.documentation)!) }
+                                HStack { Button(L("inspectConsole")) { store.inspect(entry.name) }.accessibilityIdentifier("dictionary.inspectConsole").buttonStyle(.borderedProminent).disabled(!installed(entry)); if let documentation = URL(string: entry.documentation) { Link(L("officialDocs"), destination: documentation) } }
                                 Button(L("localHelp")) { loadHelp(entry) }.accessibilityIdentifier("dictionary.localHelp").disabled(loadingHelp)
                                 if loadingHelp { Spinner(size: 14) }
                                 if !manual.isEmpty { Text(manual).font(.ui(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(14).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9)) }
-                            } else { ContentUnavailableView(L("noResults"), systemImage: "book.closed") }
+                            } else { EmptyState(L("noResults"), systemImage: "book.closed") }
                         }.padding(26).frame(maxWidth: .infinity, alignment: .leading)
                     }.frame(minWidth: 320)
                 }
@@ -46,5 +46,12 @@ struct DictionaryView: View {
     }
     private func installed(_ entry: GitCommandEntry) -> Bool { store.capabilities?.commands.first { $0.name == entry.name }?.available ?? false }
     private func availability(_ entry: GitCommandEntry) -> String { guard let info = store.capabilities?.commands.first(where: { $0.name == entry.name }) else { return L("checking") }; return L(info.library ? "library" : info.available ? "available" : "unavailable") }
-    private func loadHelp(_ entry: GitCommandEntry) { loadingHelp = true; Task { defer { loadingHelp = false }; do { manual = try await store.engine.call(["method": "help", "command": entry.name]) } catch { manual = error.localizedDescription } } }
+    private func loadHelp(_ entry: GitCommandEntry) { loadingHelp = true; Task {
+            defer { loadingHelp = false }
+            // The help of a command that is no longer selected is dropped.
+            let text: String
+            do { text = try await store.engine.call(["method": "help", "command": entry.name]) } catch { text = error.localizedDescription }
+            if selection == entry.name { manual = text }
+        }
+    }
 }

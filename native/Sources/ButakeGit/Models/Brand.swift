@@ -46,3 +46,39 @@ extension View {
     /// Text without an explicit font (sidebar rows, plain labels) follows the size chosen with ⌘+ / ⌘−.
     @MainActor func scaledText() -> some View { font(TextScale.shared.factor == 1 ? nil : Font.ui(size: 13)) }
 }
+
+/// Empty or error placeholder: icon, title, optional description and actions, centered in the available space.
+/// Used instead of SwiftUI's `ContentUnavailableView`, which inside sheets sent the view graph into an endless
+/// cycle on this macOS (saving in the editor with «Ver cambios» open, or any accessibility query while
+/// «Organizar commits» was open) and froze the app.
+struct EmptyState<Title: View, Description: View, Actions: View>: View {
+    private let title: Title; private let description: Description; private let actions: Actions
+    init(@ViewBuilder label: () -> Title, @ViewBuilder description: () -> Description, @ViewBuilder actions: () -> Actions) {
+        title = label(); self.description = description(); self.actions = actions()
+    }
+    var body: some View {
+        VStack(spacing: 10) {
+            title.labelStyle(EmptyStateLabelStyle())
+            description.font(.ui(size: 12.5)).foregroundStyle(.secondary).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            actions
+        }
+        .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+    }
+}
+extension EmptyState where Actions == EmptyView {
+    init(@ViewBuilder label: () -> Title, @ViewBuilder description: () -> Description) { self.init(label: label, description: description, actions: { EmptyView() }) }
+}
+extension EmptyState where Title == Label<Text, Image>, Description == Text?, Actions == EmptyView {
+    init(_ title: String, systemImage: String, description: Text? = nil) {
+        self.init(label: { Label(title, systemImage: systemImage) }, description: { description }, actions: { EmptyView() })
+    }
+}
+private struct EmptyStateLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: 10) {
+            configuration.icon.font(.ui(size: 34, weight: .light)).foregroundStyle(.tertiary)
+            configuration.title.font(.ui(size: 16, weight: .semibold)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+    }
+}

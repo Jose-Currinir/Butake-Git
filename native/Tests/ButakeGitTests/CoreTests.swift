@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import AppKit
 @testable import ButakeGit
 
 final class CoreTests: XCTestCase {
@@ -231,5 +233,115 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(SearchQuery("@archivo:tarifa").matchingPaths(in: tracked), ["app/Services/Envios/Tarifa.php"])
         XCTAssertEqual(SearchQuery("@ext:.md").matchingPaths(in: tracked), ["docs/a.md"])
         XCTAssertEqual(SearchQuery("@archivo:Envios @ext:php").matchingPaths(in: tracked), ["app/Services/Envios/Tarifa.php"])
+    }
+    func testCRLFFilesKeepSectionsAndLineCountsAligned() {
+        // A CRLF file followed by another file: "\r\n" is one Character, so splitting by Character merged both files.
+        let patch = "diff --git a/win.txt b/win.txt\n@@ -1,2 +1,2 @@\n-old\r\n+new\r\n same\r\ndiff --git a/unix.txt b/unix.txt\n@@ -1 +1 @@\n-c\n+d\n"
+        let sections = DiffSection.split(patch)
+        XCTAssertEqual(sections.count, 2)
+        XCTAssertEqual(sections[0].file?.path, "win.txt"); XCTAssertFalse(sections[0].patch.contains("unix.txt"))
+        XCTAssertEqual(sections[1].file, DiffFile(path: "unix.txt", additions: 1, deletions: 1))
+        XCTAssertTrue(sections[1].patch.hasPrefix("diff --git a/unix.txt"))
+        XCTAssertTrue(DiffView.capped(String(repeating: "x\r\n", count: DiffView.maxLines + 50)).contains("50"))
+        XCTAssertEqual(DiffView.clipped([DiffDisplayLine(text: String(repeating: "a", count: DiffView.maxLineLength + 500), oldLine: nil, newLine: 1, hunk: 0, kind: .addition)])[0].text.count, DiffView.maxLineLength + 2)
+    }
+    func testCombinedConflictDiffIsRecognizedAsPatch() {
+        let diff = UnifiedDiff("diff --cc file.txt\nindex 1,2..0\n--- a/file.txt\n+++ b/file.txt\n@@@ -1,1 -1,1 +1,5 @@@\n++<<<<<<< HEAD\n +ours\n++=======\n+ theirs\n++>>>>>>> other\n")
+        XCTAssertEqual(diff.files.map(\.path), ["file.txt"])
+        XCTAssertEqual(diff.lines.first?.kind, .hunk)
+        XCTAssertEqual(diff.lines.filter { $0.kind == .addition }.count, 5)
+        XCTAssertEqual(diff.lines.last?.newLine, 5)
+    }
+
+    // MARK: Editor coloring
+
+    /// Foreground colors of a text view as comparable runs.
+    private func colorRuns(_ view: NSTextView) -> [String] {
+        var runs: [String] = []
+        let storage = view.textStorage!
+        storage.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            let color = (value as? NSColor)?.usingColorSpace(.sRGB)
+            runs.append("\(range.location)+\(range.length):\(color.map { String(format: "%.3f,%.3f,%.3f", $0.redComponent, $0.greenComponent, $0.blueComponent) } ?? "-")")
+        }
+        return runs
+    }
+    private func editor(_ text: String, path: String = "sample.swift") -> (CodeTextView, CodeEditorView.Coordinator) {
+        var bound = text
+        let coordinator = CodeEditorView.Coordinator(CodeEditorView(text: Binding(get: { bound }, set: { bound = $0 }), path: path))
+        let view = CodeTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        view.delegate = coordinator; view.textStorage?.delegate = coordinator
+        view.string = text
+        coordinator.highlight(view)
+        let limit = Date().addingTimeInterval(10)
+        while !coordinator.isColored, Date() < limit { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+        return (view, coordinator)
+    }
+    /// After every edit the incrementally colored text must match a full pass over the same text.
+    func testEditorIncrementalColoringMatchesFullPass() {
+        var lines: [String] = []
+        for index in 0..<400 {
+            switch index % 5 {
+            case 0: lines.append("func value\(index)() -> String { return \"text \(index)\" } // note")
+            case 1: lines.append("let number\(index) = 0x1F + \(index)")
+            case 2: lines.append("/* block \(index) */ var state\(index) = true")
+            case 3: lines.append("    if state\(index - 1) { print(\"ok\") }")
+            default: lines.append("")
+            }
+        }
+        let (view, coordinator) = editor(lines.joined(separator: "\n") + "\n")
+        XCTAssertTrue(coordinator.isColored)
+        func location(line: Int) -> Int { view.lineStartOffsets()[line] }
+        let edits: [(String, () -> NSRange)] = [
+            ("x", { NSRange(location: location(line: 10) + 3, length: 0) }),                    // plain typing
+            ("\n    let added = 1\n", { NSRange(location: location(line: 20), length: 0) }),   // new lines
+            ("/* ", { NSRange(location: location(line: 30), length: 0) }),                       // opens a comment: lines below change
+            ("", { NSRange(location: location(line: 30), length: 3) }),                          // …and closes it again
+            ("", { NSRange(location: location(line: 40), length: location(line: 47) - location(line: 40)) }), // delete whole lines
+            ("\r\n", { NSRange(location: location(line: 50) + 2, length: 0) }),                 // CRLF break
+            ("/* never closed", { NSRange(location: location(line: 390), length: 0) }),          // comment to the end of the file
+            ("replaced", { NSRange(location: location(line: 100), length: location(line: 140) - location(line: 100)) }) // big replacement
+        ]
+        for (index, edit) in edits.enumerated() {
+            view.insertText(edit.0, replacementRange: edit.1())
+            XCTAssertTrue(coordinator.isColored, "edit \(index) fell back to a full pass")
+            let (reference, _) = editor(view.string)
+            XCTAssertEqual(colorRuns(view), colorRuns(reference), "edit \(index) left colors that differ from a full pass")
+        }
+    }
+    func testEditorColoringSkipsFilesOverTheLimitAndKeepsText() {
+        let text = String(repeating: "let value = 1 // note\n", count: 30_000) // ~660 000 characters
+        var bound = text
+        let coordinator = CodeEditorView.Coordinator(CodeEditorView(text: Binding(get: { bound }, set: { bound = $0 }), path: "big.swift"))
+        let view = CodeTextView(frame: .zero); view.delegate = coordinator; view.textStorage?.delegate = coordinator
+        view.string = text; coordinator.highlight(view)
+        XCTAssertFalse(coordinator.isColored)
+        view.insertText("x", replacementRange: NSRange(location: 5, length: 0))
+        XCTAssertEqual((view.string as NSString).length, (text as NSString).length + 1)
+    }
+    func testLargeDiffPreparesOffTheMainThread() {
+        var diff = "diff --git a/a.swift b/a.swift\n--- a/a.swift\n+++ b/a.swift\n@@ -1,2 +1,3 @@\n let a = 1\n-let b = 2\n+let b = 3\n+let c = \"x\" // note\n"
+        let style = DiffRenderer.Style.current
+        let main = DiffView.prepare(diff, path: nil, style: style)
+        var background: DiffView.Prepared?
+        let done = expectation(description: "prepared")
+        DispatchQueue.global().async { background = DiffView.prepare(diff, path: nil, style: style); done.fulfill() }
+        wait(for: [done], timeout: 10)
+        XCTAssertEqual(background?.text, main.text)
+        XCTAssertEqual(background?.ranges, main.ranges)
+        XCTAssertEqual(background?.lines.count, main.lines.count)
+        XCTAssertFalse(main.lines.isEmpty)
+        diff += String(repeating: " context\n", count: 10)
+        XCTAssertEqual(DiffView.prepare(diff, path: nil, style: style).lines.count, main.lines.count + 10)
+    }
+    func testNewFileInPartsCountsItsNetLines() {
+        // Staged as a 21-line copy, then edited (+9 −10): the file the commit would bring has 20 lines.
+        let file = ChangedFile(path: "Copy.kt", originalPath: nil, index: "A", worktree: "M")
+        XCTAssertTrue(WorkspaceStore.isNewInParts(file))
+        let total = WorkspaceStore.combined(file, unstaged: LineStats(additions: 9, deletions: 10), staged: LineStats(additions: 21, deletions: 0))
+        XCTAssertEqual(total?.additions, 20); XCTAssertEqual(total?.deletions, 0)
+        // A modified file with both sides keeps the plain sum.
+        let modified = ChangedFile(path: "A.kt", originalPath: nil, index: "M", worktree: "M")
+        XCTAssertFalse(WorkspaceStore.isNewInParts(modified))
+        XCTAssertEqual(WorkspaceStore.combined(modified, unstaged: LineStats(additions: 2, deletions: 1), staged: LineStats(additions: 3, deletions: 4))?.additions, 5)
     }
 }

@@ -11,6 +11,7 @@ import Foundation
     static let repository = "Jose-Currinir/Butake-Git"
     static let teamIdentifier = "9MJ82YJXM2"
     static let bundleIdentifier = "cl.butake.git.native"
+    nonisolated static let signingRequirement = "anchor apple generic and identifier \"cl.butake.git.native\" and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"9MJ82YJXM2\""
 
     struct Release: Equatable {
         var version: String
@@ -76,7 +77,9 @@ import Foundation
 
     /// Downloads, verifies and replaces the running app, then relaunches it.
     func install() async {
-        guard let release = latest, updateAvailable else { return }
+        // One installation at a time: a second click must not download and swap the bundle twice.
+        guard let release = latest, updateAvailable, !installInFlight else { return }
+        installInFlight = true; defer { installInFlight = false }
         let target = Bundle.main.bundleURL
         do {
             phase = .downloading
@@ -88,7 +91,8 @@ import Foundation
 
             phase = .verifying
             if let checksumURL = release.checksum {
-                let (data, _) = try await URLSession.shared.data(from: checksumURL)
+                let (data, response) = try await URLSession.shared.data(from: checksumURL)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError.message(L("updateChecksumMismatch")) }
                 let expected = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isWhitespace).first.map(String.init)?.lowercased() ?? ""
                 let actual = try await Task.detached { try Self.sha256(of: dmg) }.value
                 guard !expected.isEmpty, expected == actual else { throw UpdateError.message(L("updateChecksumMismatch")) }
@@ -110,6 +114,9 @@ import Foundation
             NSApp.terminate(nil)
             // If anything still cancels the quit, leave anyway: the verified replacement is waiting for this exit.
             try? await Task.sleep(for: .seconds(3))
+            // A sheet still open (an editor with unsaved changes) cancelled the quit: do not throw that work away.
+            // The replacement keeps waiting and is applied as soon as the user quits.
+            if NSApp.windows.contains(where: { $0.attachedSheet != nil }) { phase = .failed(L("updatePendingQuit")); return }
             UserDefaults.standard.synchronize()
             exit(0)
         } catch {
@@ -118,6 +125,8 @@ import Foundation
     }
 
     // MARK: - Helpers
+
+    private var installInFlight = false
 
     enum UpdateError: Error { case message(String); var text: String { if case .message(let value) = self { value } else { "" } } }
 
@@ -174,9 +183,9 @@ import Foundation
 
     /// Valid signature, Butake SpA's team, the expected bundle and Gatekeeper acceptance (notarized).
     nonisolated private static func verifySignature(of app: URL) throws {
-        guard try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path]).status == 0 else { throw UpdateError.message(L("updateSignatureInvalid")) }
-        let details = try run("/usr/bin/codesign", ["-dv", "--verbose=2", app.path]).output
-        guard details.contains("TeamIdentifier=\(teamIdentifier)"), details.contains("Identifier=\(bundleIdentifier)") else { throw UpdateError.message(L("updateSignatureInvalid")) }
+        // A code requirement checked by the system against the certificate chain, instead of reading codesign's
+        // printed fields: Apple-issued Developer ID Application certificate, this team, this bundle identifier.
+        guard try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "-R=\(signingRequirement)", app.path]).status == 0 else { throw UpdateError.message(L("updateSignatureInvalid")) }
         guard try run("/usr/sbin/spctl", ["--assess", "--type", "execute", app.path]).status == 0 else { throw UpdateError.message(L("updateSignatureInvalid")) }
     }
 
@@ -188,7 +197,7 @@ import Foundation
         #!/bin/sh
         while kill -0 \(ProcessInfo.processInfo.processIdentifier) 2>/dev/null; do sleep 0.2; done
         rm -rf \(shellQuote(backup))
-        mv \(shellQuote(target.path)) \(shellQuote(backup)) || exit 1
+        mv \(shellQuote(target.path)) \(shellQuote(backup)) || { /usr/bin/open \(shellQuote(target.path)); exit 1; }
         if /usr/bin/ditto \(shellQuote(staged.path)) \(shellQuote(target.path)); then rm -rf \(shellQuote(backup)); else rm -rf \(shellQuote(target.path)); mv \(shellQuote(backup)) \(shellQuote(target.path)); fi
         /usr/bin/open \(shellQuote(target.path))
         rm -rf \(shellQuote(work.path))

@@ -54,9 +54,14 @@ struct HostedRepository: Hashable {
             value = "https://" + value[value.index(after: at)...]
         }
         var detected: (HostingProvider, String)?
+        // Hosts are case-insensitive; SSH over 443 uses an alternate host name (ssh.github.com, altssh.bitbucket.org).
+        let lowered = value.lowercased()
         for provider in HostingProvider.allCases {
-            for prefix in ["git@\(provider.host):", "https://\(provider.host)/", "ssh://git@\(provider.host)/"] where value.hasPrefix(prefix) {
-                detected = (provider, String(value.dropFirst(prefix.count)))
+            let hosts = [provider.host] + (provider == .github ? ["ssh.github.com"] : ["altssh.bitbucket.org"])
+            for host in hosts {
+                for prefix in ["git@\(host):", "https://\(host)/", "ssh://git@\(host)/", "ssh://git@\(host):22/", "ssh://git@\(host):443/"] where lowered.hasPrefix(prefix) {
+                    detected = (provider, String(value.dropFirst(prefix.count)))
+                }
             }
         }
         guard let (provider, rawPath) = detected else { throw EngineFailure(code: "remote", detail: L("unsupportedRemote")) }
@@ -85,7 +90,22 @@ struct BitbucketRepository: Hashable {
 struct ProviderCredentials: Codable { var email: String; var token: String }
 /// Tokens live only in the Keychain, one item per provider.
 enum ProviderVault {
+    /// Read once per provider and kept in memory. The Keychain call is synchronous and can wait on a system
+    /// permission prompt: views used to make it on every render, on the main thread, and froze the window.
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [HostingProvider: ProviderCredentials?] = [:]
     static func load(_ provider: HostingProvider) throws -> ProviderCredentials? {
+        lock.lock(); let cached = cache[provider]; lock.unlock()
+        if let cached { return cached }
+        let value = try read(provider)
+        lock.lock(); cache[provider] = .some(value); lock.unlock()
+        return value
+    }
+    private static func remember(_ credentials: ProviderCredentials?, for provider: HostingProvider) {
+        lock.lock(); cache[provider] = .some(credentials); lock.unlock()
+        Task { @MainActor in ProviderAccounts.shared.set(provider, connected: credentials != nil) }
+    }
+    private static func read(_ provider: HostingProvider) throws -> ProviderCredentials? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: provider.keychainService, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -104,8 +124,34 @@ enum ProviderVault {
             status = SecItemAdd(insertion as CFDictionary, nil)
         } else { status = update }
         guard status == errSecSuccess else { throw EngineFailure(code: "keychain", detail: SecCopyErrorMessageString(status, nil) as String? ?? L("credentialsMissing")) }
+        remember(credentials, for: provider)
     }
-    static func remove(_ provider: HostingProvider) { SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: provider.keychainService] as CFDictionary) }
+    static func remove(_ provider: HostingProvider) {
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: provider.keychainService] as CFDictionary)
+        remember(nil, for: provider)
+    }
+}
+
+/// Which providers have a saved account, for views. Loaded off the main thread; views read `connected` and never
+/// touch the Keychain themselves.
+@MainActor @Observable final class ProviderAccounts {
+    static let shared = ProviderAccounts()
+    private(set) var connected: Set<HostingProvider> = []
+    private(set) var loaded = false
+    @ObservationIgnored private var loading: Task<Void, Never>?
+    func isConnected(_ provider: HostingProvider) -> Bool { connected.contains(provider) }
+    fileprivate func set(_ provider: HostingProvider, connected value: Bool) { if value { connected.insert(provider) } else { connected.remove(provider) } }
+    /// Reads the Keychain once, in the background. Safe to call repeatedly; callers that need the answer await it.
+    func ensureLoaded() async {
+        if loaded { return }
+        if loading == nil {
+            loading = Task {
+                let found = await Task.detached(priority: .userInitiated) { Set(HostingProvider.allCases.filter { ((try? ProviderVault.load($0)) ?? nil) != nil }) }.value
+                self.connected = found; self.loaded = true
+            }
+        }
+        await loading?.value
+    }
 }
 
 // MARK: - Provider-neutral models
@@ -157,7 +203,7 @@ private struct GHComment: Decodable { var id: Int; var user: GHUser?; var body: 
 private struct GHReview: Decodable { var user: GHUser?; var state: String }
 private struct GHCheckRuns: Decodable { var check_runs: [GHCheck]; struct GHCheck: Decodable { var id: Int; var name: String; var status: String; var conclusion: String?; var html_url: String?; var started_at: String?; var completed_at: String? } }
 private struct GHRuns: Decodable { var workflow_runs: [GHRun]; struct GHRun: Decodable { var id: Int; var run_number: Int; var name: String?; var status: String?; var conclusion: String?; var head_branch: String?; var html_url: String? } }
-private struct BBPage<T: Decodable>: Decodable { var values: [T] }
+private struct BBPage<T: Decodable>: Decodable { var values: [T]; var next: String? }
 private struct BBUser: Decodable { var display_name: String? }
 private struct BBLink: Decodable { var html: Href?; struct Href: Decodable { var href: String } }
 private struct BBRevision: Decodable { var branch: Name; var commit: Hash?; struct Name: Decodable { var name: String }; struct Hash: Decodable { var hash: String } }
@@ -170,8 +216,14 @@ private struct BBPipeline: Decodable { var uuid: String; var build_number: Int; 
 private struct Ignored: Decodable {}
 
 private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    // Credentials must never follow a redirect to another host.
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
+    // Credentials must never follow a redirect to another host. A redirect inside the provider's own API host
+    // (a renamed or transferred repository answers 301) is followed, keeping the request's credentials.
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        guard let original = task.originalRequest, let host = original.url?.host, request.url?.host == host, request.url?.scheme == "https" else { completionHandler(nil); return }
+        var next = request
+        if next.value(forHTTPHeaderField: "Authorization") == nil, let authorization = original.value(forHTTPHeaderField: "Authorization") { next.setValue(authorization, forHTTPHeaderField: "Authorization") }
+        completionHandler(next)
+    }
 }
 
 /// One client for both providers; every request goes to the provider's fixed API host.
@@ -213,6 +265,27 @@ actor HostingClient {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
+    /// Every page of a GitHub list (`per_page` in the endpoint), up to `maxPages`.
+    private func githubAll<T: Decodable>(_ endpoint: String, perPage: Int = 100, maxPages: Int = 10) async throws -> [T] {
+        var all: [T] = []
+        for page in 1...maxPages {
+            let items: [T] = try await send(.github, endpoint + (endpoint.contains("?") ? "&" : "?") + "page=\(page)")
+            all += items
+            if items.count < perPage { break }
+        }
+        return all
+    }
+    /// Every page of a Bitbucket list (`pagelen` in the endpoint), up to `maxPages`.
+    private func bitbucketAll<T: Decodable>(_ endpoint: String, maxPages: Int = 10) async throws -> [T] {
+        var all: [T] = []
+        for page in 1...maxPages {
+            let result: BBPage<T> = try await send(.bitbucket, endpoint + (endpoint.contains("?") ? "&" : "?") + "page=\(page)")
+            all += result.values
+            if result.next == nil || result.values.isEmpty { break }
+        }
+        return all
+    }
+
     /// Validates credentials and returns the account's display name.
     func verify(_ provider: HostingProvider, credentials: ProviderCredentials) async throws -> String {
         switch provider {
@@ -221,26 +294,37 @@ actor HostingClient {
         }
     }
 
-    /// Whether the provider blocks direct pushes to `branch`; nil when the token cannot read the rules.
+    enum ProtectionLookup: Equatable { case known(Bool), unknown, unreachable }
+    /// Whether the provider blocks direct pushes to `branch`; nil when the rules cannot be read.
     func branchProtected(_ repo: HostedRepository, branch: String = "main") async -> Bool? {
-        guard branch.allSatisfy({ $0.isLetter || $0.isNumber || "-_./".contains($0) }) else { return nil }
+        if case let .known(value) = await branchProtection(repo, branch: branch) { return value }
+        return nil
+    }
+    /// Like `branchProtected`, telling "the token cannot read the rules" (403/404: unknown) apart from "the provider
+    /// did not answer" (offline, expired token, rate limit: unreachable, the cached rule stays).
+    func branchProtection(_ repo: HostedRepository, branch: String = "main") async -> ProtectionLookup {
+        guard branch.allSatisfy({ $0.isLetter || $0.isNumber || "-_./".contains($0) }) else { return .unknown }
+        func failure(_ error: Error) -> ProtectionLookup {
+            let code = (error as? EngineFailure)?.code ?? ""
+            return code == "http403" || code == "http404" ? .unknown : .unreachable
+        }
         switch repo.provider {
         case .github:
-            let info: GHBranch? = try? await send(.github, "repos/\(repo.path)/branches/\(branch)")
-            guard let info else { return nil }
-            if info.protected { return true }
+            let info: GHBranch
+            do { info = try await send(.github, "repos/\(repo.path)/branches/\(branch)") } catch { return failure(error) }
+            if info.protected { return .known(true) }
             // Rulesets do not always set `protected`; a pull-request or update rule also blocks direct pushes.
             let rules: [GHRule]? = try? await send(.github, "repos/\(repo.path)/rules/branches/\(branch)")
-            return rules.map { $0.contains { ["pull_request", "update", "creation"].contains($0.type) } } ?? false
+            return .known(rules.map { $0.contains { ["pull_request", "update"].contains($0.type) } } ?? false)
         case .bitbucket:
-            let page: BBPage<BBRestriction>? = try? await send(.bitbucket, "repositories/\(repo.path)/branch-restrictions?kind=push&pagelen=100")
-            guard let page else { return nil }
-            return page.values.contains { restriction in
+            let restrictions: [BBRestriction]
+            do { restrictions = try await bitbucketAll("repositories/\(repo.path)/branch-restrictions?kind=push&pagelen=100") } catch { return failure(error) }
+            return .known(restrictions.contains { restriction in
                 // Branching-model restrictions target the production branch (usually main).
                 if restriction.branch_match_kind == "branching_model" { return restriction.branch_type == "production" }
                 guard let pattern = restriction.pattern else { return false }
                 return NSPredicate(format: "SELF LIKE %@", pattern).evaluate(with: branch)
-            }
+            })
         }
     }
 
@@ -267,14 +351,14 @@ actor HostingClient {
         switch repo.provider {
         case .github:
             // Conversation comments plus inline review comments (file, line and diff hunk).
-            async let general: [GHComment] = send(.github, "repos/\(repo.path)/issues/\(pr)/comments?per_page=100")
-            async let inline: [GHComment] = send(.github, "repos/\(repo.path)/pulls/\(pr)/comments?per_page=100")
+            async let general: [GHComment] = githubAll("repos/\(repo.path)/issues/\(pr)/comments?per_page=100")
+            async let inline: [GHComment] = githubAll("repos/\(repo.path)/pulls/\(pr)/comments?per_page=100")
             let items = try await general + ((try? await inline) ?? [])
             return items.map { HostedComment(id: $0.id, author: $0.user?.login ?? "—", body: $0.body ?? "", created: parseProviderDate($0.created_at), path: $0.path, line: $0.line ?? $0.original_line, hunk: $0.diff_hunk, url: $0.html_url.flatMap(URL.init(string:))) }
                 .sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
         case .bitbucket:
-            let page: BBPage<BBComment> = try await send(.bitbucket, "repositories/\(repo.path)/pullrequests/\(pr)/comments?pagelen=100")
-            return page.values.filter { $0.deleted != true }.map { HostedComment(id: $0.id, author: $0.user?.display_name ?? "—", body: $0.content.raw ?? "", created: parseProviderDate($0.created_on), path: $0.inline?.path, line: $0.inline?.to ?? $0.inline?.from, url: $0.links?.html.flatMap { URL(string: $0.href) }) }
+            let values: [BBComment] = try await bitbucketAll("repositories/\(repo.path)/pullrequests/\(pr)/comments?pagelen=100")
+            return values.filter { $0.deleted != true }.map { HostedComment(id: $0.id, author: $0.user?.display_name ?? "—", body: $0.content.raw ?? "", created: parseProviderDate($0.created_on), path: $0.inline?.path, line: $0.inline?.to ?? $0.inline?.from, url: $0.links?.html.flatMap { URL(string: $0.href) }) }
                 .sorted { ($0.created ?? .distantPast) < ($1.created ?? .distantPast) }
         }
     }
@@ -284,18 +368,18 @@ actor HostingClient {
     func repositories(_ provider: HostingProvider, knownOwners: [String] = []) async throws -> [HostedRemoteRepository] {
         switch provider {
         case .github:
-            let items: [GHRepo] = try await send(.github, "user/repos?per_page=100&sort=updated")
+            let items: [GHRepo] = try await githubAll("user/repos?per_page=100&sort=updated")
             return items.map { HostedRemoteRepository(provider: .github, fullName: $0.full_name, sshURL: $0.ssh_url, httpsURL: $0.clone_url, updated: parseProviderDate($0.updated_at), isPrivate: $0.private, summary: $0.description ?? "") }
         case .bitbucket:
             // Cross-workspace listing was removed by Atlassian: list workspaces first, then each one's repositories.
             var owners: [String] = []
-            if let page: BBPage<BBWorkspaceAccess> = try? await send(.bitbucket, "user/workspaces?pagelen=100") { owners = page.values.compactMap { $0.workspace?.slug } }
-            else if let page: BBPage<BBWorkspace> = try? await send(.bitbucket, "workspaces?role=member&pagelen=100") { owners = page.values.compactMap(\.slug) }
+            if let values: [BBWorkspaceAccess] = try? await bitbucketAll("user/workspaces?pagelen=100") { owners = values.compactMap { $0.workspace?.slug } }
+            else if let values: [BBWorkspace] = try? await bitbucketAll("workspaces?role=member&pagelen=100") { owners = values.compactMap(\.slug) }
             for owner in knownOwners where !owners.contains(owner) { owners.append(owner) }
             guard !owners.isEmpty else { throw EngineFailure(code: "no_workspaces", detail: L("bitbucketNoWorkspaces")) }
             var repos: [BBRepo] = []; var lastError: Error?
             for owner in owners where owner.allSatisfy({ $0.isLetter || $0.isNumber || "-_.".contains($0) }) {
-                do { let page: BBPage<BBRepo> = try await send(.bitbucket, "repositories/\(owner)?pagelen=100&sort=-updated_on"); repos += page.values }
+                do { let values: [BBRepo] = try await bitbucketAll("repositories/\(owner)?pagelen=100&sort=-updated_on"); repos += values }
                 catch { lastError = error }
             }
             if repos.isEmpty, let lastError { throw lastError }
@@ -311,11 +395,11 @@ actor HostingClient {
         switch provider {
         case .github:
             let user: GHUser = try await send(.github, "user")
-            let orgs: [GHOrg] = (try? await send(.github, "user/orgs?per_page=100")) ?? []
+            let orgs: [GHOrg] = (try? await githubAll("user/orgs?per_page=100")) ?? []
             return [user.login] + orgs.map(\.login)
         case .bitbucket:
             var owners: [String] = []
-            if let page: BBPage<BBWorkspaceAccess> = try? await send(.bitbucket, "user/workspaces?pagelen=100") { owners = page.values.compactMap { $0.workspace?.slug } }
+            if let values: [BBWorkspaceAccess] = try? await bitbucketAll("user/workspaces?pagelen=100") { owners = values.compactMap { $0.workspace?.slug } }
             for owner in knownOwners where !owners.contains(owner) { owners.append(owner) }
             if owners.isEmpty { throw EngineFailure(code: "no_workspaces", detail: L("bitbucketNoWorkspaces")) }
             return owners
@@ -357,7 +441,7 @@ actor HostingClient {
     func reviews(_ repo: HostedRepository, pr: Int) async throws -> [HostedReview] {
         switch repo.provider {
         case .github:
-            let items: [GHReview] = try await send(.github, "repos/\(repo.path)/pulls/\(pr)/reviews?per_page=100")
+            let items: [GHReview] = try await githubAll("repos/\(repo.path)/pulls/\(pr)/reviews?per_page=100")
             var latest: [String: ReviewVerdict] = [:]; var order: [String] = []
             for review in items {
                 guard let author = review.user?.login else { continue }
@@ -379,15 +463,20 @@ actor HostingClient {
         guard sha.allSatisfy(\.isHexDigit) else { return [] }
         switch repo.provider {
         case .github:
-            let runs: GHCheckRuns = try await send(.github, "repos/\(repo.path)/commits/\(sha)/check-runs?per_page=100")
-            return runs.check_runs.map { check in
+            var checkRuns: [GHCheckRuns.GHCheck] = []
+            for page in 1...5 {
+                let runs: GHCheckRuns = try await send(.github, "repos/\(repo.path)/commits/\(sha)/check-runs?per_page=100&page=\(page)")
+                checkRuns += runs.check_runs
+                if runs.check_runs.count < 100 { break }
+            }
+            return checkRuns.map { check in
                 let state: CheckState = check.status != "completed" ? .pending : check.conclusion == "success" ? .success : ["failure", "timed_out", "cancelled", "action_required"].contains(check.conclusion ?? "") ? .failure : .neutral
                 let duration = parseProviderDate(check.completed_at).flatMap { end in parseProviderDate(check.started_at).map { end.timeIntervalSince($0) } }
                 return HostedCheck(id: "\(check.id)", name: check.name, state: state, detail: check.conclusion ?? check.status, url: check.html_url.flatMap(URL.init(string:)), duration: duration)
             }
         case .bitbucket:
-            let page: BBPage<BBStatus> = try await send(.bitbucket, "repositories/\(repo.path)/commit/\(sha)/statuses?pagelen=100")
-            return page.values.map { status in
+            let statuses: [BBStatus] = try await bitbucketAll("repositories/\(repo.path)/commit/\(sha)/statuses?pagelen=100")
+            return statuses.map { status in
                 let state: CheckState = switch status.state { case "SUCCESSFUL": .success; case "FAILED", "STOPPED": .failure; case "INPROGRESS": .pending; default: .neutral }
                 return HostedCheck(id: status.key, name: status.name ?? status.key, state: state, detail: status.state, url: status.url.flatMap(URL.init(string:)))
             }

@@ -5,13 +5,68 @@ struct DiffView: NSViewRepresentable {
     /// Read while the parent renders, so a theme change rebuilds the colors of this AppKit view.
     var themeSignature = Brand.theme.signature ^ Int(TextScale.shared.factor * 1_000)
     static let maxLines = 20_000
+    /// Longer lines (minified files) are cut for display: laying out megabyte-long lines blocks the main thread.
+    static let maxLineLength = 4_000
+    static func clipped(_ lines: [DiffDisplayLine]) -> [DiffDisplayLine] {
+        lines.map { line in
+            guard line.text.utf16.count > maxLineLength else { return line }
+            var copy = line; copy.text = String(line.text.prefix(maxLineLength)) + " …"; return copy
+        }
+    }
     /// Very large patches stay responsive: render the first lines and say how many were omitted.
     static func capped(_ text: String) -> String {
+        // Counted in UTF-8 bytes: "\r\n" is one Character, so comparing Characters never counted CRLF lines.
         var count = 0; var cut: String.Index?
-        for index in text.indices where text[index] == "\n" { count += 1; if count == maxLines { cut = index; break } }
+        let bytes = text.utf8; var index = bytes.startIndex
+        while index != bytes.endIndex { if bytes[index] == 0x0A { count += 1; if count == maxLines { cut = index; break } }; index = bytes.index(after: index) }
         guard let cut else { return text }
-        let remaining = text[text.index(after: cut)...].reduce(0) { $1 == "\n" ? $0 + 1 : $0 }
+        let remaining = bytes[bytes.index(after: cut)...].reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
         return String(text[..<cut]) + "\n\\ " + String(format: L("diffTruncated"), remaining)
+    }
+    /// Above this size (UTF-8 bytes) a patch is prepared on a background queue.
+    static let backgroundThreshold = 150_000
+    /// Everything derived from a patch text. Pure: safe to compute off the main thread (the style is captured on it).
+    struct Prepared { let lines: [DiffDisplayLine]; let text: NSAttributedString; let ranges: [NSRange]; let words: [(NSRange, DiffDisplayLine.Kind)]; let longest: Int }
+    static func prepare(_ text: String, path: String?, style: DiffRenderer.Style) -> Prepared {
+        let lines = clipped(UnifiedDiff(capped(text)).lines)
+        let rendered = DiffRenderer.render(lines, path: path ?? DiffRenderer.firstPath(in: text), style: style)
+        return Prepared(lines: lines, text: rendered.text, ranges: rendered.ranges, words: rendered.words, longest: lines.reduce(0) { max($0, $1.text.utf16.count) })
+    }
+    fileprivate static func apply(_ prepared: Prepared, to editor: DiffTextView, in scroll: NSScrollView, embedded: Bool, onHeight: ((CGFloat) -> Void)?, large: Bool) {
+        editor.displayLines = prepared.lines; editor.wordRanges = prepared.words
+        let font = DiffStyle.font
+        // Monospaced: width is the longest line's length times one glyph advance, no per-line text measurement.
+        let advance = ("0" as NSString).size(withAttributes: [.font: font]).width
+        let width = max(scroll.contentSize.width, ceil(CGFloat(prepared.longest) * advance) + 220)
+        editor.setFrameSize(NSSize(width: width, height: max(scroll.contentSize.height, 200)))
+        editor.textContainer?.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
+        // Large patches are not laid out up front (hundreds of milliseconds): the text system lays out what is shown
+        // and finishes the rest in the background; `DiffTextView` then takes its exact height.
+        editor.fitsHeightWhenLaidOut = large && !embedded
+        editor.layoutManager?.delegate = editor
+        editor.lineRanges = prepared.ranges; editor.textStorage?.setAttributedString(prepared.text)
+        if let manager = editor.layoutManager, let container = editor.textContainer {
+            let height: CGFloat
+            if large && !embedded {
+                // Lines never wrap: until the layout finishes, the height is the line count times the height of a
+                // code line near the top (laying out only up to it).
+                let sample = prepared.lines.firstIndex { $0.kind == .addition || $0.kind == .deletion || $0.kind == .context } ?? 0
+                let measured = prepared.ranges.indices.contains(sample) && prepared.ranges[sample].location < min(prepared.text.length, 20_000)
+                    ? manager.lineFragmentRect(forGlyphAt: manager.glyphIndexForCharacter(at: prepared.ranges[sample].location), effectiveRange: nil).height : 0
+                let lineHeight = measured > 0 ? measured : manager.defaultLineHeight(for: font) + 3.5
+                height = max(scroll.contentSize.height, CGFloat(prepared.lines.count) * lineHeight + 28)
+            } else {
+                manager.ensureLayout(for: container)
+                let rect = manager.usedRect(for: container)
+                // Embedded: exactly the content, without the empty fragment after the last newline.
+                height = embedded ? ceil(rect.height - manager.extraLineFragmentRect.height) + 2 * editor.textContainerInset.height : max(scroll.contentSize.height, rect.height + 28)
+            }
+            editor.setFrameSize(NSSize(width: width, height: height))
+            if embedded, let onHeight { DispatchQueue.main.async { onHeight(height) } }
+        }
+        scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView)
+        DispatchQueue.main.async { scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView) }
+        editor.needsDisplay = true; scroll.verticalRulerView?.needsDisplay = true
     }
     let text: String
     /// File shown, for syntax colors when the patch itself does not name it.
@@ -63,28 +118,21 @@ struct DiffView: NSViewRepresentable {
             scroll.verticalRulerView?.needsDisplay = true
         }
         if editor.source != text {
-            editor.source = text; editor.displayLines = UnifiedDiff(DiffView.capped(text)).lines
-            let rendered = DiffRenderer.render(editor.displayLines, path: path ?? DiffRenderer.firstPath(in: text))
-            let attributed = rendered.text; let ranges = rendered.ranges
-            editor.wordRanges = rendered.words
-            let font = DiffStyle.font
-            // Monospaced: width is the longest line's length times one glyph advance, no per-line text measurement.
-            let advance = ("0" as NSString).size(withAttributes: [.font: font]).width
-            let longest = CGFloat(editor.displayLines.reduce(0) { max($0, ($1.text as NSString).length) }) * advance
-            let width = max(scroll.contentSize.width, ceil(longest) + 220)
-            editor.setFrameSize(NSSize(width: width, height: max(scroll.contentSize.height, 200)))
-            editor.textContainer?.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
-            editor.lineRanges = ranges; editor.textStorage?.setAttributedString(attributed)
-            editor.layoutManager?.ensureLayout(for: editor.textContainer!)
-            if let manager = editor.layoutManager, let container = editor.textContainer {
-                let rect = manager.usedRect(for: container)
-                // Embedded: exactly the content, without the empty fragment after the last newline.
-                let height = embedded ? ceil(rect.height - manager.extraLineFragmentRect.height) + 2 * editor.textContainerInset.height : max(scroll.contentSize.height, rect.height + 28)
-                editor.setFrameSize(NSSize(width: width, height: height))
-                if embedded, let onHeight { DispatchQueue.main.async { onHeight(height) } }
+            editor.source = text; editor.renderGeneration &+= 1
+            let generation = editor.renderGeneration, style = DiffRenderer.Style.current, path = path, embedded = embedded, onHeight = onHeight
+            if text.utf8.count > DiffView.backgroundThreshold {
+                // Large patch: parsing and coloring take hundreds of milliseconds. They run off the main thread
+                // (the previous content stays on screen) and are applied only if this is still the text to show.
+                DispatchQueue.global(qos: .userInitiated).async { [weak editor, weak scroll] in
+                    let prepared = DiffView.prepare(text, path: path, style: style)
+                    DispatchQueue.main.async {
+                        guard let editor, let scroll, editor.renderGeneration == generation else { return }
+                        DiffView.apply(prepared, to: editor, in: scroll, embedded: embedded, onHeight: onHeight, large: true)
+                    }
+                }
+            } else {
+                DiffView.apply(DiffView.prepare(text, path: path, style: style), to: editor, in: scroll, embedded: embedded, onHeight: onHeight, large: false)
             }
-            scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView)
-            DispatchQueue.main.async { scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView) }
         }
         editor.needsDisplay = true; scroll.verticalRulerView?.needsDisplay = true
     }
@@ -111,10 +159,25 @@ func lineIndex(for character: Int, in ranges: [NSRange]) -> Int? {
     }
     return nil
 }
-private final class DiffTextView: NSTextView {
+fileprivate final class DiffTextView: NSTextView, NSLayoutManagerDelegate {
     override var wantsDefaultClipping: Bool { true }
     var hunkTitle = L("hunkStage")
     var source: String?
+    /// Identifies the text being prepared: a background result for an older text is dropped.
+    var renderGeneration = 0
+    /// Large patch shown with an estimated height: take the real one once the whole text is laid out.
+    var fitsHeightWhenLaidOut = false
+    func layoutManager(_ layoutManager: NSLayoutManager, didCompleteLayoutFor textContainer: NSTextContainer?, atEnd layoutFinishedFlag: Bool) {
+        guard fitsHeightWhenLaidOut, layoutFinishedFlag, let textContainer, let scroll = enclosingScrollView else { return }
+        let height = max(scroll.contentSize.height, layoutManager.usedRect(for: textContainer).height + 28)
+        guard abs(height - frame.height) > 0.5 else { return }
+        // Not from inside the layout pass that reported it.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.fitsHeightWhenLaidOut else { return }
+            self.setFrameSize(NSSize(width: self.frame.width, height: height)); scroll.reflectScrolledClipView(scroll.contentView)
+            self.needsDisplay = true; scroll.verticalRulerView?.needsDisplay = true
+        }
+    }
     var themeSignature = 0
     var displayLines: [DiffDisplayLine] = []
     var lineRanges: [NSRange] = []
@@ -275,11 +338,21 @@ enum DiffRenderer {
         }
         return nil
     }
-    static func render(_ lines: [DiffDisplayLine], path: String?) -> (text: NSAttributedString, ranges: [NSRange], words: [(NSRange, DiffDisplayLine.Kind)]) {
+    /// Fonts and colors resolved on the main thread (theme and text size live there), so `render` can run anywhere.
+    struct Style {
+        let font, hunkFont, annotationFont, metadataFont: NSFont
+        let text: NSColor
+        let syntax: SyntaxColors
+        static var current: Style {
+            Style(font: DiffStyle.font, hunkFont: NSFont.monospacedSystemFont(ofSize: TextScale.points(11), weight: .medium), annotationFont: NSFont.systemFont(ofSize: TextScale.points(11.5), weight: .medium),
+                  metadataFont: NSFont.systemFont(ofSize: TextScale.points(12.5), weight: .semibold), text: Brand.textNS, syntax: .current)
+        }
+    }
+    static func render(_ lines: [DiffDisplayLine], path: String?, style: Style = .current) -> (text: NSAttributedString, ranges: [NSRange], words: [(NSRange, DiffDisplayLine.Kind)]) {
         let result = NSMutableAttributedString()
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 3.5; paragraph.lineBreakMode = .byClipping
-        let base: [NSAttributedString.Key: Any] = [.font: DiffStyle.font, .foregroundColor: Brand.textNS, .paragraphStyle: paragraph]
-        var highlighter = SyntaxHighlighter(language: CodeLanguage.of(path))
+        let base: [NSAttributedString.Key: Any] = [.font: style.font, .foregroundColor: style.text, .paragraphStyle: paragraph]
+        var highlighter = SyntaxHighlighter(language: CodeLanguage.of(path), colors: style.syntax)
         var blockOld = false, blockNew = false
         var ranges: [NSRange] = []; ranges.reserveCapacity(lines.count)
         var bodies: [String] = []; bodies.reserveCapacity(lines.count)
@@ -292,14 +365,14 @@ enum DiffRenderer {
                 if !body.isEmpty && (line.kind != .context || line.oldLine != nil) { body.removeFirst() }
             case .hunk:
                 attributes[.foregroundColor] = NSColor.secondaryLabelColor
-                attributes[.font] = NSFont.monospacedSystemFont(ofSize: TextScale.points(11), weight: .medium)
+                attributes[.font] = style.hunkFont
             case .annotation:
                 body = friendly(body); attributes[.foregroundColor] = NSColor.secondaryLabelColor
-                attributes[.font] = NSFont.systemFont(ofSize: TextScale.points(11.5), weight: .medium)
+                attributes[.font] = style.annotationFont
             case .metadata:
-                attributes[.font] = NSFont.systemFont(ofSize: TextScale.points(12.5), weight: .semibold)
+                attributes[.font] = style.metadataFont
                 // Multi-file output ("▸ path"): switch language per file.
-                if line.fileHeader { highlighter = SyntaxHighlighter(language: CodeLanguage.of(String(body.dropFirst(2)))); blockOld = false; blockNew = false }
+                if line.fileHeader { highlighter = SyntaxHighlighter(language: CodeLanguage.of(String(body.dropFirst(2))), colors: style.syntax); blockOld = false; blockNew = false }
             }
             let start = result.length
             result.append(NSAttributedString(string: body + "\n", attributes: attributes))

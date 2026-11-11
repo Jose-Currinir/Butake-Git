@@ -29,16 +29,12 @@ struct RepositoryToolsView: View {
                 Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityIdentifier("tools.refresh").accessibilityLabel(L("refresh")).help(L("refresh"))
             }.padding(16).background(Brand.bar)
             Divider()
-            if store.route == .branches {
-                List(store.repository?.branches ?? []) { branch in
-                    HStack(spacing: 14) { Image(systemName: store.isProtected(branch.name) ? "lock.fill" : "arrow.triangle.branch").foregroundStyle(branch.current ? Brand.accent : .secondary); VStack(alignment: .leading, spacing: 5) { Text(branch.name).font(.uiHeadline); Text(branch.upstream.isEmpty ? "—" : branch.upstream).font(.uiCaption).foregroundStyle(.secondary) }; Spacer(); if branch.current { Text(L("current")).font(.uiCaption).foregroundStyle(Brand.accent) } else { Button(L("switch_branch")) { store.action("switch_branch", value: branch.name) }.controlSize(.small) } }
-                        .padding(.vertical, 8).contextMenu { Button(L("merge")) { store.action("merge", value: branch.name, confirm: true) }.accessibilityIdentifier("tools.merge").disabled(!store.canWrite || branch.current); Button(L("rebase")) { store.action("rebase", value: branch.name, confirm: true) }.accessibilityIdentifier("tools.rebase").disabled(!store.canWrite || branch.current); Button(L("rename")) { store.inspect("branch", arguments: "-m \(shellQuote(branch.name)) ") }.accessibilityIdentifier("tools.rename"); Button(L("delete"), role: .destructive) { store.deleteBranch(branch.name) }.accessibilityIdentifier("tools.delete").disabled(branch.current || branch.name == store.repository?.primary) }
-                }.listStyle(.inset).themedScroll()
-            } else if entries.isEmpty && !loading { emptyState.frame(maxHeight: .infinity) }
+            if entries.isEmpty && !loading { emptyState.frame(maxHeight: .infinity) }
             else {
                 List(entries, selection: $selected) { entry in
                     ToolEntryRow(entry: entry, fallbackIcon: store.route.icon) { entryActions(entry) }.tag(entry.id)
                         .accessibilityIdentifier("\(store.route.rawValue).\(entry.id)")
+                        .modifier(StashRowActions(enabled: store.route == .stash, apply: { Task { await store.prepare("stash", arguments: "apply \(shellQuote(entry.id))") } }, pop: { Task { await store.prepare("stash", arguments: "pop \(shellQuote(entry.id))") } }, drop: { Task { await store.prepare("stash", arguments: "drop \(shellQuote(entry.id))") } }))
                 }.listStyle(.inset).themedScroll()
             }
         }.task(id: "\(store.route.rawValue)-\(store.repository?.root ?? "")-\(store.repository?.commits.first?.hash ?? "")-\(store.status)") { await reload() }
@@ -46,7 +42,7 @@ struct RepositoryToolsView: View {
     }
     @ViewBuilder private var emptyState: some View {
         let key = "empty_\(store.route.rawValue)"
-        ContentUnavailableView {
+        EmptyState {
             Label(L(key + "_title"), systemImage: store.route.icon)
         } description: { Text(L(key + "_detail")) } actions: {
             switch store.route {
@@ -61,11 +57,10 @@ struct RepositoryToolsView: View {
     }
     @ViewBuilder private var toolActions: some View {
         switch store.route {
-        case .branches: Button(L("newBranch")) { form = ToolForm(kind: "branch", title: L("newBranch"), command: "switch") }.accessibilityIdentifier("tools.newBranch")
         case .worktrees: Button(L("newWorktree")) { form = ToolForm(kind: "worktree", title: L("newWorktree"), command: "worktree") }.accessibilityIdentifier("tools.newWorktree").disabled(!store.canWrite)
         case .tags: Button(L("newTag")) { form = ToolForm(kind: "tag", title: L("newTag"), command: "tag") }.accessibilityIdentifier("tools.newTag").disabled(!store.canWrite)
         case .remotes: Button(L("newRemote")) { form = ToolForm(kind: "remote", title: L("newRemote"), command: "remote") }.accessibilityIdentifier("tools.newRemote").disabled(!store.canWrite)
-        case .stash: Button(L("stashSave")) { store.action("stash") }.accessibilityIdentifier("tools.stashSave")
+        case .stash: Button(L("stashSave")) { store.action("stash") }.accessibilityIdentifier("tools.stashSave").disabled(!store.canWrite || store.files.isEmpty)
         default: EmptyView()
         }
     }
@@ -73,14 +68,14 @@ struct RepositoryToolsView: View {
         switch store.route {
         case .worktrees:
             Button(L("open")) { store.reopenRecent(entry.id) }.accessibilityIdentifier("tools.open").controlSize(.small)
-            Menu { Button(L("openFinder")) { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: entry.id) }.accessibilityIdentifier("tools.openFinder"); Button(L("delete"), role: .destructive) { Task { await store.prepare("worktree", arguments: "remove \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.delete").disabled(entry.id == store.repository?.root) } label: { Image(systemName: "ellipsis") }.accessibilityIdentifier("tools.openFinder").menuStyle(.borderlessButton).fixedSize()
+            Menu { Button(L("openFinder")) { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: entry.id) }.accessibilityIdentifier("tools.openFinder"); Button(L("delete"), role: .destructive) { Task { await store.prepare("worktree", arguments: "remove \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.delete").disabled(entry.id == store.repository?.root) } label: { Image(systemName: "ellipsis") }.accessibilityIdentifier("tools.more").accessibilityLabel(L("more")).menuStyle(.borderlessButton).fixedSize()
         case .stash:
             Menu {
                 Button(L("stashApply")) { Task { await store.prepare("stash", arguments: "apply \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.stashApply")
                 Button(L("stashPop")) { Task { await store.prepare("stash", arguments: "pop \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.stashPop")
                 Button(L("stashDrop"), role: .destructive) { Task { await store.prepare("stash", arguments: "drop \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.stashDrop")
                 Button(L("diff")) { store.showDiff(entry.id, subtitle: L("stash"), args: ["diff", "--no-ext-diff", "--no-color", "\(entry.id)^1", entry.id]) }.accessibilityIdentifier("tools.diff")
-            } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
+            } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("tools.stashMenu").accessibilityLabel(L("more")).menuStyle(.borderlessButton).fixedSize()
         case .tags:
             Button(L("viewChanges")) { store.showCommit(entry.id, title: entry.id) }.accessibilityIdentifier("tools.viewChanges").controlSize(.small)
         case .remotes:
@@ -93,11 +88,13 @@ struct RepositoryToolsView: View {
     private func reload() async {
         guard let root = store.repository?.root else { return }
         loading = true; defer { loading = false }
+        // Read into a local value: an answer that arrives after the section or repository changed is dropped.
+        let route = store.route; var loaded: [ToolEntry] = []
         do {
-            switch store.route {
+            switch route {
             case .worktrees:
                 let text = try await store.engine.query(root, ["worktree", "list", "--porcelain"])
-                entries = text.components(separatedBy: "\n\n").compactMap { block in
+                loaded = text.components(separatedBy: "\n\n").compactMap { block in
                     let lines = block.components(separatedBy: "\n")
                     guard let path = lines.first(where: { $0.hasPrefix("worktree ") })?.dropFirst(9), !path.isEmpty else { return nil }
                     let branch = lines.first(where: { $0.hasPrefix("branch ") })?.replacingOccurrences(of: "branch refs/heads/", with: "") ?? L("detachedHead")
@@ -107,14 +104,14 @@ struct RepositoryToolsView: View {
                 }
             case .tags:
                 let text = try await store.engine.query(root, ["tag", "--list", "--sort=-creatordate", "--format=%(refname:short)%09%(objectname:short)%09%(creatordate:unix)%09%(contents:subject)"])
-                entries = text.split(separator: "\n").map { line in
+                loaded = text.split(separator: "\n").map { line in
                     let parts = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
                     let name = parts[0]; let subject = parts.count > 3 ? parts[3] : ""
                     return ToolEntry(id: name, title: subject.isEmpty ? name : subject, detail: name, extra: parts.count > 1 ? parts[1] : "", date: parts.count > 2 ? epoch(parts[2]) : nil, icon: "tag.fill", tint: .orange, chip: name)
                 }
             case .stash:
                 let text = try await store.engine.query(root, ["stash", "list", "--format=%gd%x09%h%x09%ct%x09%gs"])
-                entries = text.split(separator: "\n").map { line in
+                loaded = text.split(separator: "\n").map { line in
                     let parts = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
                     let (branch, message) = humanizeStash(parts.count > 3 ? parts[3] : "")
                     return ToolEntry(id: parts[0], title: message, detail: parts[0], extra: parts.count > 1 ? parts[1] : "", date: parts.count > 2 ? epoch(parts[2]) : nil, icon: "archivebox.fill", tint: .blue, chip: branch)
@@ -122,7 +119,7 @@ struct RepositoryToolsView: View {
             case .remotes:
                 let text = try await store.engine.query(root, ["remote", "-v"])
                 var seen: Set<String> = []
-                entries = text.split(separator: "\n").compactMap { line in
+                loaded = text.split(separator: "\n").compactMap { line in
                     let parts = line.split(separator: "\t", maxSplits: 1); guard parts.count == 2, seen.insert(String(parts[0])).inserted else { return nil }
                     let address = redactURL(String(parts[1]).replacingOccurrences(of: " (fetch)", with: "").replacingOccurrences(of: " (push)", with: ""))
                     return ToolEntry(id: String(parts[0]), title: String(parts[0]), detail: abbreviatePath(address), icon: remoteIcon(address), tint: .blue, chip: remoteHost(address))
@@ -130,7 +127,7 @@ struct RepositoryToolsView: View {
             case .reflog:
                 let text = try await store.engine.query(root, ["reflog", "--date=unix", "--format=%h%x09%h%x09%gd%x09%gs", "-150"])
                 // Several reflog steps can share a second, so ids are positional (HEAD@{n}), never date-based.
-                entries = text.split(separator: "\n").enumerated().map { index, line in
+                loaded = text.split(separator: "\n").enumerated().map { index, line in
                     let parts = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false).map(String.init)
                     let step = ReflogStep(parts.count > 3 ? parts[3] : "")
                     let stamp = parts.count > 2 ? parts[2].split(separator: "{").last.map { String($0.dropLast()) } : nil
@@ -138,7 +135,17 @@ struct RepositoryToolsView: View {
                 }
             default: break
             }
-        } catch { store.fail(error) }
+            guard !Task.isCancelled, store.route == route, store.repository?.root == root else { return }
+            entries = loaded
+        } catch { if !Task.isCancelled { store.fail(error) } }
+    }
+}
+/// The stash menu's actions, also reachable as accessibility actions of the row (no pointer needed).
+private struct StashRowActions: ViewModifier {
+    let enabled: Bool; let apply: () -> Void; let pop: () -> Void; let drop: () -> Void
+    func body(content: Content) -> some View {
+        if enabled { content.accessibilityAction(named: L("stashApply"), apply).accessibilityAction(named: L("stashPop"), pop).accessibilityAction(named: L("stashDrop"), drop) }
+        else { content }
     }
 }
 private struct ToolFormSheet: View {

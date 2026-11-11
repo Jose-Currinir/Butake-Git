@@ -16,6 +16,8 @@ struct BranchesView: View {
     @State private var comparison: BranchComparison?
     @State private var renaming: BranchRename?
     @State private var generation = UUID()
+    /// Built once per loaded branch: computing the graph in `body` repeated it on every render.
+    @State private var graphModel: CommitGraph?
     private var branches: [GitBranch] { store.repository?.branches ?? [] }
     private var localNames: Set<String> { Set(branches.map(\.name)) }
     var body: some View {
@@ -35,10 +37,10 @@ struct BranchesView: View {
                     Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityIdentifier("branches.refresh").accessibilityLabel(L("refresh")).help(L("refresh")).disabled(loading)
                 }.padding(16).background(Brand.bar)
                 Divider()
-                if loading { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
-                else if !error.isEmpty { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
+                if loading && (details == nil || details?.name != selected || details?.base != base) { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                else if !error.isEmpty { EmptyState(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
                 else if let details { branchContent(details) }
-                else { ContentUnavailableView(L("branches"), systemImage: "arrow.triangle.branch", description: Text(L("selectBranch"))).frame(maxHeight: .infinity) }
+                else { EmptyState(L("branches"), systemImage: "arrow.triangle.branch", description: Text(L("selectBranch"))).frame(maxHeight: .infinity) }
             }.frame(minWidth: 390)
         }
         .onAppear { if selected.isEmpty { selected = store.repository?.branch ?? branches.first?.name ?? "" }; if base == selected || !branches.contains(where: { $0.name == base }) { base = preferredBase(for: selected) } }
@@ -47,7 +49,7 @@ struct BranchesView: View {
             if !names.contains(selected) { selected = store.repository?.branch ?? names.first ?? "" }
             if !names.contains(base) { base = preferredBase(for: selected) }
         }
-        .task(id: "\(store.repository?.root ?? "")|\(selected)|\(base)|\(store.repository?.commits.first?.hash ?? "")|\(store.status)") { await load() }
+        .task(id: "\(store.repository?.root ?? "")|\(selected)|\(base)|\(store.repository?.commits.first?.hash ?? "")|\(branches.map { "\($0.name)\($0.updated ?? 0)" }.joined(separator: ","))") { await load() }
         .sheet(item: $renaming) { branch in RenameBranchSheet(store: store, original: branch.name).themedSheet() }
         .sheet(isPresented: $newBranch) { NewBranchSheet(store: store).themedSheet() }
         .sheet(item: $comparison, onDismiss: { fileSelection = nil }) { item in BranchDiffSheet(store: store, comparison: item).themedSheet() }
@@ -85,8 +87,10 @@ struct BranchesView: View {
                     }.controlSize(.small)
                     if !value.authors.isEmpty {
                         Text(L("branchContributors")).font(.uiCaption.weight(.semibold))
-                        ForEach(value.authors.sorted { $0.count > $1.count }) { author in
-                            HStack { Text(author.name).font(.uiCaption).frame(maxWidth: 200, alignment: .leading); ProgressView(value: Double(author.count), total: Double(max(value.ahead, 1))).tint(Brand.accent); Text("\(author.count)").font(.uiCaption.monospacedDigit()).frame(width: 36, alignment: .trailing) }
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(value.authors.sorted { $0.count > $1.count }) { author in
+                                HStack { Text(author.name).font(.uiCaption).frame(maxWidth: 200, alignment: .leading); ProgressView(value: Double(min(author.count, max(value.ahead, 1))), total: Double(max(value.ahead, 1))).tint(Brand.accent); Text("\(author.count)").font(.uiCaption.monospacedDigit()).frame(width: 36, alignment: .trailing) }
+                            }
                         }
                     }
                 }.padding(20)
@@ -98,7 +102,7 @@ struct BranchesView: View {
                 Text(L(value.mergeBase == nil ? "tipComparison" : "ancestorComparison")).font(.uiCaption2).foregroundStyle(.secondary).padding(.horizontal)
                 List(value.files, selection: $fileSelection) { file in
                     HStack { Image(systemName: "doc.text").foregroundStyle(.secondary); Text(file.path).font(.ui(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle); Spacer(); Text(file.additions.map { "+\($0)" } ?? L("binary")).foregroundStyle(Brand.accent); Text(file.deletions.map { "−\($0)" } ?? "").foregroundStyle(Brand.danger) }.font(.uiCaption.monospacedDigit()).padding(.vertical, 4).tag(file.path)
-                }.listStyle(.inset).themedScroll().overlay { if value.files.isEmpty { ContentUnavailableView(L("noBranchChanges"), systemImage: "equal.circle") } }
+                }.listStyle(.inset).themedScroll().overlay { if value.files.isEmpty { EmptyState(L("noBranchChanges"), systemImage: "equal.circle") } }
                 .onChange(of: fileSelection) { _, path in if let path { comparison = BranchComparison(file: path, head: value.head, base: value.mergeBase ?? value.baseHead) } }
 
             }
@@ -110,7 +114,7 @@ struct BranchesView: View {
         BranchMetric(title: "\(L("missingCommits")) · \(d.base)", value: d.behind, icon: "arrow.down.left")
     }
     private func graph(_ value: BranchDetails) -> some View {
-        let graph = CommitGraph(commits: value.commits)
+        let graph = graphModel.flatMap { $0.rows.count == value.commits.count ? $0 : nil } ?? CommitGraph(commits: value.commits)
         return VStack(spacing: 0) {
             Text(L("branchGraphLimit")).font(.uiCaption2).foregroundStyle(.secondary).padding(.horizontal)
             ScrollView {
@@ -133,7 +137,7 @@ struct BranchesView: View {
     private func load() async {
         guard let root = store.repository?.root, !selected.isEmpty, !base.isEmpty else { return }
         let id = UUID(); generation = id; loading = true; error = ""
-        do { let result: BranchDetails = try await store.engine.call(["method": "branchDetails", "path": root, "branch": selected, "base": base]); guard generation == id, !Task.isCancelled else { return }; details = result; loading = false }
+        do { let result: BranchDetails = try await store.engine.call(["method": "branchDetails", "path": root, "branch": selected, "base": base]); guard generation == id, !Task.isCancelled else { return }; graphModel = CommitGraph(commits: result.commits); details = result; loading = false }
         catch { guard generation == id, !Task.isCancelled else { return }; self.error = error.localizedDescription; loading = false }
     }
 }
@@ -158,7 +162,7 @@ struct RenameBranchSheet: View {
             Text(L("renameBranch")).font(.uiTitle2.weight(.semibold))
             Text(original).font(.uiCaption.monospaced()).foregroundStyle(.secondary)
             TextField(L("branchName"), text: $name).accessibilityIdentifier("branches.branchName").textFieldStyle(.roundedBorder)
-            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.accessibilityIdentifier("branches.cancel"); Button(L("rename")) { let renamed = name.trimmingCharacters(in: .whitespacesAndNewlines); dismiss(); store.renameBranch(original, to: renamed) }.accessibilityIdentifier("branches.rename").buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name == original).keyboardShortcut(.defaultAction) }
+            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.accessibilityIdentifier("branches.cancel"); Button(L("rename")) { let renamed = name.trimmingCharacters(in: .whitespacesAndNewlines); dismiss(); store.renameBranch(original, to: renamed) }.accessibilityIdentifier("branches.renameConfirm").buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name == original).keyboardShortcut(.defaultAction) }
         }.padding(26).frame(width: 440).onAppear { name = original }
     }
 }

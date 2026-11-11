@@ -27,9 +27,12 @@ struct UnifiedDiff {
     var files: [DiffFile] = []
     init(_ text: String) {
         let raw = text.components(separatedBy: "\n")
-        let patch = text.hasPrefix("diff --git ") || raw.contains { $0.hasPrefix("@@ ") }
+        // A conflicted file is shown by Git as a combined diff (`diff --cc`, `@@@` hunks, two marker columns).
+        let patch = text.hasPrefix("diff --git ") || text.hasPrefix("diff --cc ") || text.hasPrefix("diff --combined ") || raw.contains { $0.hasPrefix("@@ ") || $0.hasPrefix("@@@ ") }
         var old = 0; var new = 0; var hunk = -1
+        var combined = false
         let expression = try! NSRegularExpression(pattern: #"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@"#)
+        let combinedExpression = try! NSRegularExpression(pattern: #"^@@@ -\d+(?:,\d+)? -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@@"#)
         // `git show`/`log -p` output carries a preamble and several files; a plain single-file diff keeps its compact form.
         let preamble = patch && !text.hasPrefix("diff --git ")
         let fileHeaders = preamble || raw.filter { $0.hasPrefix("diff --git ") }.count > 1
@@ -45,8 +48,13 @@ struct UnifiedDiff {
                 lines.append(DiffDisplayLine(text: String(line.dropFirst()), oldLine: nil, newLine: nil, hunk: nil, kind: .metadata))
                 hunk = -1; inHeader = false; current = nil; continue
             }
+            if patch && (line.hasPrefix("diff --cc ") || line.hasPrefix("diff --combined ")) {
+                inHeader = true; combined = true
+                files.append(DiffFile(path: String(line.dropFirst(line.hasPrefix("diff --cc ") ? 10 : 16)))); current = files.count - 1
+                continue
+            }
             if patch && line.hasPrefix("diff --git ") {
-                inHeader = true
+                inHeader = true; combined = false
                 let path = line.range(of: " b/", options: .backwards).map { String(line[$0.upperBound...]) } ?? line
                 let previous = current
                 files.append(DiffFile(path: path)); current = files.count - 1
@@ -59,6 +67,10 @@ struct UnifiedDiff {
             }
             if line.hasPrefix("@@ "), let match = expression.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)), let left = Range(match.range(at: 1), in: line), let right = Range(match.range(at: 2), in: line) {
                 old = Int(line[left]) ?? 0; new = Int(line[right]) ?? 0; hunk += 1; inHeader = false
+                lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: nil, hunk: hunk, kind: .hunk)); continue
+            }
+            if line.hasPrefix("@@@ "), let match = combinedExpression.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)), let right = Range(match.range(at: 1), in: line) {
+                new = Int(line[right]) ?? 0; hunk += 1; inHeader = false; combined = true
                 lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: nil, hunk: hunk, kind: .hunk)); continue
             }
             if !patch { lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: index + 1, hunk: nil, kind: .context)); continue }
@@ -75,6 +87,14 @@ struct UnifiedDiff {
             }
             if hunk < 0 { if preamble { lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: nil, hunk: nil, kind: .annotation)) }; continue }
             if line.hasPrefix("\\ ") { lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: nil, hunk: hunk, kind: .annotation)); continue }
+            if combined {
+                // Two marker columns (one per parent): added in the result if any is "+", removed if any is "-".
+                let markers = line.prefix(2)
+                if markers.contains("+") { lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: new, hunk: hunk, kind: .addition)); new += 1; if let current { files[current].additions += 1 } }
+                else if markers.contains("-") { lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: nil, hunk: hunk, kind: .deletion)); if let current { files[current].deletions += 1 } }
+                else if !line.isEmpty { lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: new, hunk: hunk, kind: .context)); new += 1 }
+                continue
+            }
             if line.hasPrefix("+") { lines.append(DiffDisplayLine(text: line, oldLine: nil, newLine: new, hunk: hunk, kind: .addition)); new += 1; if let current { files[current].additions += 1 } }
             else if line.hasPrefix("-") { lines.append(DiffDisplayLine(text: line, oldLine: old, newLine: nil, hunk: hunk, kind: .deletion)); old += 1; if let current { files[current].deletions += 1 } }
             else if line.hasPrefix(" ") { lines.append(DiffDisplayLine(text: line, oldLine: old, newLine: new, hunk: hunk, kind: .context)); old += 1; new += 1 }
@@ -96,7 +116,7 @@ struct DiffSection: Identifiable, Equatable {
     static func split(_ text: String) -> [DiffSection] {
         let files = UnifiedDiff(text).files
         guard !files.isEmpty else { return [] }
-        var sections: [DiffSection] = []; var buffer: [Substring] = []; var next = 0; var inFile = false
+        var sections: [DiffSection] = []; var buffer: [String] = []; var next = 0; var inFile = false
         func flush() {
             defer { buffer.removeAll(keepingCapacity: true) }
             if inFile, next < files.count {
@@ -107,9 +127,11 @@ struct DiffSection: Identifiable, Equatable {
                 if !note.isEmpty { sections.append(DiffSection(id: sections.count, note: note)) }
             }
         }
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            if line.hasPrefix("\u{1}") { flush(); inFile = false; buffer.append(line.dropFirst()); continue }
-            if line.hasPrefix("diff --git ") { flush(); inFile = true }
+        // `components(separatedBy:)`, not `split`: "\r\n" is a single Character, so `split` kept a CRLF file and the
+        // next file's `diff --git` line in one piece and every later card showed another file's patch.
+        for line in text.components(separatedBy: "\n") {
+            if line.hasPrefix("\u{1}") { flush(); inFile = false; buffer.append(String(line.dropFirst())); continue }
+            if line.hasPrefix("diff --git ") || line.hasPrefix("diff --cc ") || line.hasPrefix("diff --combined ") { flush(); inFile = true }
             buffer.append(line)
         }
         flush()

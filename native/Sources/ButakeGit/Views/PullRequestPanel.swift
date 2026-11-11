@@ -57,7 +57,7 @@ struct PullRequestDetail: View {
                 }
                 if !comments.isEmpty {
                     Text(L("prConversation")).font(.uiHeadline).padding(.top, 4)
-                    ForEach(comments) { comment in
+                    ForEach(comments, id: \.listKey) { comment in
                         CommentCard(comment: comment, onReply: { quote in composer = quote }, onAgent: { copyForAgent(comment) })
                     }
                 }
@@ -74,9 +74,12 @@ struct PullRequestDetail: View {
         loading = true; defer { loading = false }
         async let loadedComments = client.comments(repo, pr: pr.id)
         async let loadedReviews = client.reviews(repo, pr: pr.id)
-        do { comments = try await loadedComments } catch { self.error = error.localizedDescription }
-        reviews = (try? await loadedReviews) ?? []
-        if let sha = pr.sourceSHA { checks = (try? await client.checks(repo, sha: sha)) ?? [] }
+        // Late answers of a pull request that is no longer shown are dropped.
+        do { let value = try await loadedComments; guard !Task.isCancelled else { return }; comments = value } catch { guard !Task.isCancelled else { return }; self.error = error.localizedDescription }
+        let loaded = (try? await loadedReviews) ?? []
+        guard !Task.isCancelled else { return }
+        reviews = loaded
+        if let sha = pr.sourceSHA { let value = (try? await client.checks(repo, sha: sha)) ?? []; guard !Task.isCancelled else { return }; checks = value }
         await loadFiles()
     }
     /// Changed files come from local remote-tracking refs (no extra API calls, same for both providers).
@@ -87,8 +90,10 @@ struct PullRequestDetail: View {
         do {
             async let status = store.engine.query(root, ["diff", "--name-status", "-z", "--no-renames", "\(base)...\(head)"])
             async let numstat = store.engine.query(root, ["diff", "--numstat", "--no-renames", "\(base)...\(head)"])
-            files = CommitFileChange.parse(status: try await status, numstat: try await numstat); filesNote = ""
-        } catch { files = []; filesNote = String(format: L("prFilesNeedFetch"), pr.source, pr.target) }
+            let parsed = CommitFileChange.parse(status: try await status, numstat: try await numstat)
+            guard !Task.isCancelled else { return }
+            files = parsed; filesNote = ""
+        } catch { guard !Task.isCancelled else { return }; files = []; filesNote = String(format: L("prFilesNeedFetch"), pr.source, pr.target) }
     }
     private func execute(_ action: String) async {
         busy = true; defer { busy = false }
@@ -442,9 +447,10 @@ private struct PRChangesView: View {
     let store: WorkspaceStore; let pr: HostedPR; let files: [CommitFileChange]; let note: String; let retry: () -> Void
     @State private var selected: String?
     @State private var diff = ""
+    @State private var loadingDiff = false
     var body: some View {
         if files.isEmpty {
-            ContentUnavailableView {
+            EmptyState {
                 Label(L(note.isEmpty ? "prNoFiles" : "prFilesUnavailable"), systemImage: "doc.text.magnifyingglass")
             } description: { Text(note.isEmpty ? L("prNoFilesDetail") : note) } actions: {
                 if !note.isEmpty { Button(L("fetch")) { store.action("fetch"); Task { try? await Task.sleep(for: .seconds(2)); retry() } } }
@@ -465,18 +471,28 @@ private struct PRChangesView: View {
                 }
                 .frame(minWidth: 220, idealWidth: 280, maxWidth: 380)
                 Group {
-                    if selected == nil { ContentUnavailableView(L("diff"), systemImage: "doc.text", description: Text(L("chooseFile"))) }
-                    else if diff.isEmpty { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    if selected == nil { EmptyState(L("diff"), systemImage: "doc.text", description: Text(L("chooseFile"))) }
+                    else if loadingDiff { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    else if diff.isEmpty { EmptyState(L("prNoFiles"), systemImage: "doc.text.magnifyingglass") }
                     else { DiffView(text: diff, path: selected) }
                 }.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
             }
             .task(id: selected) { await loadDiff() }
             .onAppear { if selected == nil { selected = files.first?.path } }
+            // A reload can drop the selected file: fall back to the first one instead of waiting forever.
+            .onChange(of: files) { _, files in if let path = selected, !files.contains(where: { $0.path == path }) { selected = files.first?.path } }
         }
     }
     private func loadDiff() async {
         guard let path = selected, let root = store.repository?.root else { return }
-        diff = ""
-        diff = (try? await store.engine.query(root, ["diff", "--no-ext-diff", "--no-color", "origin/\(pr.target)...origin/\(pr.source)", "--", path])) ?? L("operationFailed")
+        diff = ""; loadingDiff = true
+        let value = (try? await store.engine.query(root, ["diff", "--no-ext-diff", "--no-color", "origin/\(pr.target)...origin/\(pr.source)", "--", path])) ?? L("operationFailed")
+        guard !Task.isCancelled else { return }
+        diff = value; loadingDiff = false
     }
+}
+
+private extension HostedComment {
+    /// General and inline comments come from different id spaces (GitHub), so the id alone can repeat in a list.
+    var listKey: String { "\(path == nil ? "general" : "inline")-\(id)" }
 }

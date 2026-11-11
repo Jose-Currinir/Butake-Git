@@ -183,7 +183,6 @@
 "stashDrop" = "Eliminar stash";
 "noSelection" = "Selecciona una entrada";
 "lines" = "líneas";
-"files" = "archivos";
 "hunkStage" = "Preparar bloque";
 "conflict" = "Conflicto";
 "resolveConflict" = "Resolver conflicto…";
@@ -833,3 +832,14 @@
 "modified" = "Modificado";
 "deleted" = "Eliminado";
 "renamed" = "Movido";
+"terminalBusyStay" = "Hay una sesión de Git en ejecución. Espera a que termine o detenla antes de cambiar de sección.";
+"branchNameExists" = "Ya existe una rama con ese nombre.";
+"branchNameInvalid" = "Nombre de rama no válido: sin espacios ni ~ ^ : ? * [ \\, sin «..», y no puede empezar con «-» ni terminar en «/» o «.».";
+"resetMenu" = "Reset";
+"busyTryAgain" = "Hay otra operación en curso. Inténtalo de nuevo en un momento.";
+"commitCountOne" = "%d commit";
+"commitCountMany" = "%d commits";
+"updatePendingQuit" = "La actualización está lista. Guarda o cierra lo que tengas abierto y sal de Butake Git para terminar de instalarla.";
+"resetHardDetail" = "Reset --hard descarta los cambios sin commit del directorio de trabajo y del índice.";
+"newFilePartsWhole" = "Archivo nuevo: se muestra completo. Una parte ya está preparada (la copia inicial) y lo editado después todavía no; prepara el archivo para que el commit lo lleve entero.";
+"newFilePartsStaged" = "Archivo nuevo: esto es lo que ya está preparado. Tiene ediciones posteriores sin preparar que el commit no incluiría.";

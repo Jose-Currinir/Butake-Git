@@ -22,10 +22,15 @@ struct CommitGraph {
         }
         return labels
     }
-    init(commits: [GitCommit], localBranches: Set<String> = []) {
+    /// `pruneMissingParents`: for filtered histories. A parent that is not in the list never arrives to close its
+    /// lane, so every row kept one more lane open: thousands of lanes and seconds of main-thread work per keystroke.
+    init(commits: [GitCommit], localBranches: Set<String> = [], pruneMissingParents: Bool = false) {
         branchLabels = CommitGraph.branchLabels(commits, localBranches: localBranches)
+        let present: Set<String> = pruneMissingParents ? Set(commits.map(\.hash)) : []
         var active: [String] = []
-        for commit in commits {
+        for original in commits {
+            var commit = original
+            if pruneMissingParents { commit.parents = commit.parents.filter(present.contains) }
             let incoming = Array(active.indices)
             let column: Int
             if let index = active.firstIndex(of: commit.hash) { column = index }

@@ -77,7 +77,7 @@ struct PublishRepositorySheet: View {
     @State private var confirming = false
     @State private var error = ""
     private let client = HostingClient()
-    private var connected: [HostingProvider] { HostingProvider.allCases.filter { ((try? ProviderVault.load($0)) ?? nil) != nil } }
+    private var connected: [HostingProvider] { HostingProvider.allCases.filter(ProviderAccounts.shared.isConnected) }
     private var localBranches: [String] { store.repository?.branches.map(\.name) ?? [] }
     private var slug: String { provider == .bitbucket ? name.lowercased() : name }
     /// origin already points to this repository (a previous attempt created it): only push.
@@ -93,7 +93,7 @@ struct PublishRepositorySheet: View {
             Divider()
             if connected.isEmpty {
                 VStack(spacing: 12) {
-                    ContentUnavailableView(L("publishNoAccount"), systemImage: "person.crop.circle.badge.exclamationmark", description: Text(L("publishNoAccountDetail")))
+                    EmptyState(L("publishNoAccount"), systemImage: "person.crop.circle.badge.exclamationmark", description: Text(L("publishNoAccountDetail")))
                     SettingsLink { Text(L("openAccounts")) }
                 }.frame(maxHeight: .infinity)
             } else {
@@ -107,7 +107,8 @@ struct PublishRepositorySheet: View {
                     Toggle(L("publishPrivate"), isOn: $isPrivate)
                     Picker(L("publishProtocol"), selection: $useSSH) { Text("SSH").tag(true); Text("HTTPS").tag(false) }.pickerStyle(.segmented).help(L("cloneProtocolHelp"))
                     LabeledContent(L("publishBranches")) {
-                        HStack { ForEach(localBranches, id: \.self) { branch in Toggle(branch, isOn: Binding(get: { branches.contains(branch) }, set: { if $0 { branches.insert(branch) } else { branches.remove(branch) } })).toggleStyle(.checkbox) } }
+                        // Scrolls sideways and builds lazily: one checkbox per branch in a plain HStack grew the sheet with many branches.
+                        ScrollView(.horizontal, showsIndicators: false) { LazyHStack(spacing: 10) { ForEach(localBranches, id: \.self) { branch in Toggle(branch, isOn: Binding(get: { branches.contains(branch) }, set: { if $0 { branches.insert(branch) } else { branches.remove(branch) } })).toggleStyle(.checkbox).accessibilityIdentifier("publish.branch.\(branch)") } } }.frame(height: 22)
                     }
                     if !owner.isEmpty && !name.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
@@ -138,6 +139,7 @@ struct PublishRepositorySheet: View {
         .task {
             name = store.repository?.name.replacingOccurrences(of: " ", with: "-") ?? ""
             branches = Set(localBranches.filter { $0 == store.repository?.primary || $0 == "develop" || $0 == store.repository?.branch })
+            await ProviderAccounts.shared.ensureLoaded()
             // Resume a half-finished publication with the same provider; otherwise prefer Bitbucket (team workspaces).
             if let origin = store.repository?.remote, let hosted = try? HostedRepository(remote: origin), connected.contains(hosted.provider) {
                 provider = hosted.provider; name = hosted.name

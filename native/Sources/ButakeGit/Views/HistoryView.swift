@@ -60,7 +60,7 @@ struct HistoryView: View {
                         case .ended: hover.update(hash: nil, overGraph: false)
                         }
                     }
-                    if commits.isEmpty { ContentUnavailableView(L("noResults"), systemImage: "magnifyingglass").padding(.top, 60).transition(.opacity) }
+                    if commits.isEmpty { EmptyState(L("noResults"), systemImage: "magnifyingglass").padding(.top, 60).transition(.opacity) }
                 }
                 .focusable(store.route == .history).focused($focused).focusEffectDisabled()
                 .onKeyPress(.downArrow) { move(1, in: commits, proxy: proxy) }
@@ -70,9 +70,11 @@ struct HistoryView: View {
                 .onChange(of: store.route) { _, route in focused = route == .history }
             }
         }
-        .task(id: "\(scope)|\(pathFilterKey)|\(store.repository?.commits.count ?? 0)") {
+        .task(id: "\(scope)|\(pathFilterKey)|\(store.repository?.commits.count ?? 0)|\(store.route == .history)") {
             let query = SearchQuery(store.search)
-            guard !scope.isEmpty || query.hasPathFilters, let root = store.repository?.root else { scopedHashes = nil; return }
+            // History stays mounted behind other sections and shares the search field: a path filter typed in Changes
+            // must not load the deep history nor move the user here.
+            guard !scope.isEmpty || (query.hasPathFilters && store.route == .history), let root = store.repository?.root else { scopedHashes = nil; return }
             // Branch scope and/or commits that touched matching paths (@archivo / @ext).
             var args = ["log", "--format=%H"]
             if !scope.isEmpty { args.append(scope) }
@@ -90,7 +92,7 @@ struct HistoryView: View {
                 let ordered = try await store.engine.query(root, args).split(separator: "\n").map(String.init)
                 scopedHashes = Set(ordered)  // no animation: animating the removal of thousands of rows froze the app for minutes
                 // Show the file's latest commit in the inspector instead of one outside the filter.
-                if file != nil, let selected = store.selectedCommit?.hash, !ordered.contains(selected), let first = ordered.first { store.selectCommit(hash: first) }
+                if file != nil, store.route == .history, let selected = store.selectedCommit?.hash, !ordered.contains(selected), let first = ordered.first { store.selectCommit(hash: first) }
             } catch { store.fail(error) }
         }
     }
@@ -343,7 +345,7 @@ struct CommitInspector: View {
                     }
                     .id(commit.hash)
                     .transition(.opacity.combined(with: .offset(x: 10)))
-                } else { ContentUnavailableView(L("noSelection"), systemImage: "point.3.connected.trianglepath.dotted", description: Text(L("selectCommit"))) }
+                } else { EmptyState(L("noSelection"), systemImage: "point.3.connected.trianglepath.dotted", description: Text(L("selectCommit"))) }
             }.padding(20)
             .animation(.smooth(duration: 0.22), value: store.selectedCommit?.hash)
         }.background(Brand.surface)
@@ -565,7 +567,7 @@ private struct CommitContextMenu: View {
             let inHead = store.refs.reachableFromHead.contains(commit.hash)
             Button(L("cherry_pick")) { store.action("cherry_pick", value: commit.hash, confirm: true) }.disabled(!store.canWrite || inHead)
             Button(L("revert")) { store.action("revert", value: commit.hash, confirm: true) }.disabled(!store.canWrite || !inHead || commit.parents.count > 1)
-            Menu("Reset") { ForEach(["soft", "mixed", "hard"], id: \.self) { mode in Button("Reset --\(mode)…") { Task { await store.prepare("reset", arguments: "--\(mode) \(commit.hash)") } }.disabled(!store.canWrite) } }
+            Menu(L("resetMenu")) { ForEach(["soft", "mixed", "hard"], id: \.self) { mode in Button("\(L("resetMenu")) --\(mode)…") { Task { await store.prepare("reset", arguments: "--\(mode) \(commit.hash)", destructive: mode == "hard") } }.disabled(!store.canWrite) } }
             Button(L("organizeMenu")) { store.organizing = true }.disabled(!store.canWrite)
             Button(L("interactiveRebaseFrom")) { Task { await store.prepare("rebase", arguments: "--interactive \(commit.hash)", interactive: true) } }.disabled(!store.canWrite)
     }
