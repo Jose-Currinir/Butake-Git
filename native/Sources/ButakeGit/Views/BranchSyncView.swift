@@ -62,14 +62,14 @@ struct BranchSyncView: View {
     private func summary(_ result: BranchSyncResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                StatCard(value: result.onlyLeft.count, title: String(format: L("onlyIn"), result.left), detail: String(format: L("missingIn"), result.right), color: .blue)
-                StatCard(value: result.onlyRight.count, title: String(format: L("onlyIn"), result.right), detail: String(format: L("missingIn"), result.left), color: .orange)
+                StatCard(value: result.onlyLeft.count, title: String(format: L("onlyIn"), result.left), detail: String(format: L("missingIn"), result.right), color: Brand.info)
+                StatCard(value: result.onlyRight.count, title: String(format: L("onlyIn"), result.right), detail: String(format: L("missingIn"), result.left), color: Brand.warning)
                 StatCard(value: result.equivalentLeft.count, title: L("alreadyBoth"), detail: L("inBoth"), color: .secondary)
             }
             // No fixedSize here: a vertically fixed text next to the lists created a layout cycle
             // that stopped the whole window from drawing.
             Text(L("syncExplain") + " " + L("mergesExcluded")).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-            if !store.files.isEmpty { Label(L("dirtyHint"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) }
+            if !store.files.isEmpty { Label(L("dirtyHint"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(Brand.warning) }
         }.padding(16)
     }
 
@@ -85,8 +85,8 @@ struct BranchSyncView: View {
                                 Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
                                 Text(commit.subject).font(.system(size: 11)).lineLimit(1)
                                 Spacer()
-                                Text("\(result.left) \(commit.shortHash)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.blue)
-                                if let twin { Text("≡ \(result.right) \(twin.shortHash)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.orange) }
+                                Text("\(result.left) \(commit.shortHash)").font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.info)
+                                if let twin { Text("≡ \(result.right) \(twin.shortHash)").font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.warning) }
                             }.padding(.vertical, 2)
                         }
                     }.padding(.horizontal, 4)
@@ -190,7 +190,7 @@ private struct SyncColumn: View {
                 .buttonStyle(.borderedProminent).controlSize(.large)
                 .disabled(selected.isEmpty || store.isProtected(target) || store.busy || store.terminalActive || !store.files.isEmpty)
                 .accessibilityIdentifier("sync.copyTo.\(target)")
-                if store.isProtected(target) { Text(String(format: L("targetProtected"), target)).font(.caption2).foregroundStyle(.orange).multilineTextAlignment(.center) }
+                if store.isProtected(target) { Text(String(format: L("targetProtected"), target)).font(.caption2).foregroundStyle(Brand.warning).multilineTextAlignment(.center) }
             }.padding(12)
         }
         .frame(minWidth: 280, maxWidth: .infinity)

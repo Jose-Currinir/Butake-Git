@@ -45,7 +45,7 @@ struct CloneRepositorySheet: View {
                     TextField("git@bitbucket.org:equipo/repositorio.git", text: $url)
                         .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced)).accessibilityIdentifier("clone.url")
                         .onChange(of: url) { _, value in selected = accounts.first { $0.sshURL == value || $0.httpsURL == value }?.id; if !nameEdited { name = Self.folderName(value) } }
-                    if !url.isEmpty && !urlLooksValid { Label(L("cloneInvalidURL"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) }
+                    if !url.isEmpty && !urlLooksValid { Label(L("cloneInvalidURL"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(Brand.warning) }
                 }
                 if !connected.isEmpty { accountsList }
                 else { Label(L("cloneConnectHint"), systemImage: "person.crop.circle.badge.plus").font(.caption).foregroundStyle(.secondary) }
@@ -60,10 +60,10 @@ struct CloneRepositorySheet: View {
                         Text(L("cloneFolderName")).font(.caption).foregroundStyle(.secondary)
                         TextField(L("cloneFolderName"), text: Binding(get: { name }, set: { name = $0; nameEdited = true })).textFieldStyle(.roundedBorder).accessibilityIdentifier("clone.name")
                     }
-                    if exists { Label(String(format: L("cloneFolderExists"), name), systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange) }
+                    if exists { Label(String(format: L("cloneFolderExists"), name), systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Brand.warning) }
                     else if !name.isEmpty { Text(String(format: L("cloneWillCreate"), abbreviatePath(target))).font(.caption).foregroundStyle(.tertiary) }
                 }
-                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").font(.caption).foregroundStyle(Brand.danger).textSelection(.enabled) }
             }.padding(18)
             Spacer(minLength: 0)
             Divider()
@@ -108,7 +108,7 @@ struct CloneRepositorySheet: View {
             .listStyle(.bordered(alternatesRowBackgrounds: false)).frame(minHeight: 150)
             .overlay {
                 if loadingAccounts { Spinner(size: 18) }
-                else if accounts.isEmpty { Text(accountErrors.isEmpty ? L("cloneNoRepositories") : accountErrors.joined(separator: "\n")).font(.caption).foregroundStyle(accountErrors.isEmpty ? Color.secondary : Color.orange).multilineTextAlignment(.center).padding() }
+                else if accounts.isEmpty { Text(accountErrors.isEmpty ? L("cloneNoRepositories") : accountErrors.joined(separator: "\n")).font(.caption).foregroundStyle(accountErrors.isEmpty ? Color.secondary : Brand.warning).multilineTextAlignment(.center).padding() }
             }
             .onChange(of: selected) { _, id in if let repo = accounts.first(where: { $0.id == id }) { url = useSSH ? repo.sshURL : repo.httpsURL; nameEdited = false; name = Self.folderName(url) } }
         }

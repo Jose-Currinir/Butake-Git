@@ -962,6 +962,14 @@ import QuartzCore
                 if let operation = pending { NSLog("BUTAKE_QA confirm title=%@", operation.title); pending = nil; await perform(operation) }
             case let name where name.hasPrefix("search:"): search = String(name.dropFirst(7)).replacingOccurrences(of: "_", with: " ")
             case let name where name.hasPrefix("pick:"): NotificationCenter.default.post(name: .init("butake.qa.pickFiles"), object: Int(name.dropFirst(5)) ?? 2)
+            case let name where name.hasPrefix("selectCommit:"): selectCommit(hash: String(name.dropFirst(13))); showInspector = true
+            case let name where name.hasPrefix("theme:"):
+                let parts = name.dropFirst(6).split(separator: ":").map(String.init)
+                if let family = ThemeStore.Family(rawValue: parts.first ?? "") { ThemeStore.shared.family = family }
+                if parts.count > 1, let mode = ThemeStore.Mode(rawValue: parts[1]) { ThemeStore.shared.mode = mode }
+            case "settings":
+                UserDefaults.standard.set("general", forKey: "settingsTab")
+                if let item = NSApp.mainMenu?.items.first?.submenu?.items.first(where: { $0.keyEquivalent == "," }), let action = item.action { NSApp.sendAction(action, to: item.target, from: item) }
             case "busyflip":
                 // Reproduces what every Git operation does to the window: busy on, short work, busy off.
                 for _ in 0..<3 { busy = true; try? await Task.sleep(for: .milliseconds(250)); busy = false; try? await Task.sleep(for: .milliseconds(700)) }

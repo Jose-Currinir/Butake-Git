@@ -15,7 +15,7 @@ struct RebasePlannerView: View {
             Text(L("rebaseHelp")).font(.caption).foregroundStyle(.secondary)
             HStack { TextField(L("rebaseBase"), text: $base).textFieldStyle(.roundedBorder); Button(L("loadPlan")) { Task { await load() } }.disabled(base.isEmpty || loading) }
             if loading { Spinner(size: 14) }
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(Brand.danger).textSelection(.enabled) }
             List {
                 ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
                     HStack(spacing: 10) {

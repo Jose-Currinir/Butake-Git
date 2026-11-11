@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 
 struct DiffView: NSViewRepresentable {
+    /// Read while the parent renders, so a theme change rebuilds the colors of this AppKit view.
+    var themeSignature = Brand.theme.signature
     static let maxLines = 20_000
     /// Very large patches stay responsive: render the first lines and say how many were omitted.
     static func capped(_ text: String) -> String {
@@ -22,7 +24,7 @@ struct DiffView: NSViewRepresentable {
         scroll.contentView.automaticallyAdjustsContentInsets = false; scroll.contentView.contentInsets = NSEdgeInsetsZero
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true; scroll.scrollerStyle = .overlay; scroll.borderType = .noBorder
-        scroll.drawsBackground = true; scroll.backgroundColor = .textBackgroundColor
+        scroll.drawsBackground = true; scroll.backgroundColor = Brand.surfaceNS
         // macOS 14+ no longer clips by default: without this the ruler separator escapes the scroll view.
         scroll.clipsToBounds = true
         let editor = DiffTextView(frame: .zero)
@@ -35,7 +37,7 @@ struct DiffView: NSViewRepresentable {
         editor.minSize = .zero; editor.maxSize = NSSize(width: 1_000_000, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainer?.containerSize = NSSize(width: 1_000_000, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainer?.widthTracksTextView = false
-        editor.backgroundColor = .textBackgroundColor; editor.textColor = .textColor; editor.drawsBackground = true
+        editor.backgroundColor = Brand.surfaceNS; editor.textColor = Brand.textNS; editor.drawsBackground = true
         scroll.documentView = editor
         let ruler = DiffLineRuler(scrollView: scroll, orientation: .verticalRuler)
         ruler.clientView = editor; ruler.clipsToBounds = true; editor.clipsToBounds = true; scroll.verticalRulerView = ruler; scroll.hasVerticalRuler = true; scroll.rulersVisible = true
@@ -47,6 +49,11 @@ struct DiffView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let editor = scroll.documentView as? DiffTextView else { return }
         editor.onHunk = onHunk; editor.hunkTitle = hunkTitle
+        if editor.themeSignature != themeSignature {
+            editor.themeSignature = themeSignature; editor.source = nil
+            scroll.backgroundColor = Brand.surfaceNS; editor.backgroundColor = Brand.surfaceNS; editor.textColor = Brand.textNS
+            scroll.verticalRulerView?.needsDisplay = true
+        }
         if editor.source != text {
             editor.source = text; editor.displayLines = UnifiedDiff(DiffView.capped(text)).lines
             let rendered = DiffRenderer.render(editor.displayLines, path: path ?? DiffRenderer.firstPath(in: text))
@@ -84,6 +91,7 @@ private final class DiffTextView: NSTextView {
     override var wantsDefaultClipping: Bool { true }
     var hunkTitle = L("hunkStage")
     var source: String?
+    var themeSignature = 0
     var displayLines: [DiffDisplayLine] = []
     var lineRanges: [NSRange] = []
     /// Character ranges that changed inside a modified line (drawn as a stronger tint).
@@ -136,7 +144,7 @@ private final class DiffLineRuler: NSRulerView {
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSBezierPath(rect: bounds).addClip()
-        NSColor.textBackgroundColor.setFill(); rect.intersection(bounds).fill()
+        Brand.surfaceNS.setFill(); rect.intersection(bounds).fill()
         guard let editor = clientView as? DiffTextView, let manager = editor.layoutManager, let container = editor.textContainer else { return }
         let range = manager.glyphRange(forBoundingRect: editor.visibleRect, in: container)
         let style = NSMutableParagraphStyle(); style.alignment = .right
@@ -176,11 +184,10 @@ struct FileInspector: View {
                             ChangeKindBadge(kind: file.kind).padding(.top, 2)
                         }
                     }
-                    if let original = file.originalPath { Label(String(format: L("movedFrom"), original), systemImage: "arrow.right").font(.caption).foregroundStyle(.purple).lineLimit(2) }
+                    if let original = file.originalPath { Label(String(format: L("movedFrom"), original), systemImage: "arrow.right").font(.caption).foregroundStyle(Brand.special).lineLimit(2) }
                     Divider()
                     stateRow(L("staged"), active: file.index != " " && file.index != "?", stats: store.stats(for: file, staged: true))
                     stateRow(L("unstaged"), active: file.worktree != " " || file.index == "?", stats: store.stats(for: file, staged: false))
-                    if store.isReviewed(file) { Label(L("reviewedMark"), systemImage: "checkmark.seal.fill").font(.caption).foregroundStyle(Brand.accent) }
                     Divider()
                     VStack(alignment: .leading, spacing: 8) {
                         Button { store.action(store.stagedSelection ? "unstage" : "stage", value: file.path) } label: { Label(L(store.stagedSelection ? "unstage" : "stage"), systemImage: store.stagedSelection ? "minus.circle" : "plus.circle").frame(maxWidth: .infinity, alignment: .leading) }
@@ -196,7 +203,7 @@ struct FileInspector: View {
                     Text(L("diffContextMenu")).font(.caption2).foregroundStyle(.tertiary)
                 } else { Text(L("chooseFile")).foregroundStyle(.secondary).font(.caption) }
             }.padding(20)
-        }.background(.background)
+        }.background(Brand.surface)
     }
     private func stateRow(_ title: String, active: Bool, stats: LineStats?) -> some View {
         HStack {
@@ -210,17 +217,19 @@ struct FileInspector: View {
 
 enum DiffStyle {
     static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-    static let addition = NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.33, green: 0.80, blue: 0.53, alpha: 1) : NSColor(srgbRed: 0.10, green: 0.55, blue: 0.30, alpha: 1) }
-    static let deletion = NSColor.systemRed
-    static let addedWord = NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.25, green: 0.70, blue: 0.42, alpha: 0.34) : NSColor(srgbRed: 0.25, green: 0.72, blue: 0.40, alpha: 0.30) }
-    static let removedWord = NSColor.systemRed.withAlphaComponent(0.28)
+    // From the active theme; DiffView re-renders when its signature changes.
+    static var addition: NSColor { Brand.theme.addition.ns }
+    static var deletion: NSColor { Brand.theme.deletion.ns }
+    static var addedWord: NSColor { addition.withAlphaComponent(Brand.theme.isDark ? 0.34 : 0.28) }
+    static var removedWord: NSColor { deletion.withAlphaComponent(0.28) }
     static func background(_ kind: DiffDisplayLine.Kind) -> NSColor? {
+        let dark = Brand.theme.isDark
         switch kind {
-        case .addition: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.20, green: 0.55, blue: 0.32, alpha: 0.16) : NSColor(srgbRed: 0.85, green: 0.96, blue: 0.88, alpha: 1) }
-        case .deletion: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.70, green: 0.20, blue: 0.20, alpha: 0.18) : NSColor(srgbRed: 1.0, green: 0.92, blue: 0.92, alpha: 1) }
-        case .hunk: NSColor.systemBlue.withAlphaComponent(0.06)
-        case .metadata: NSColor.labelColor.withAlphaComponent(0.06)
-        default: nil
+        case .addition: return addition.withAlphaComponent(dark ? 0.16 : 0.14)
+        case .deletion: return deletion.withAlphaComponent(dark ? 0.18 : 0.11)
+        case .hunk: return Brand.theme.modified.ns.withAlphaComponent(0.07)
+        case .metadata: return NSColor.labelColor.withAlphaComponent(0.06)
+        default: return nil
         }
     }
 }
@@ -238,7 +247,7 @@ enum DiffRenderer {
     static func render(_ lines: [DiffDisplayLine], path: String?) -> (text: NSAttributedString, ranges: [NSRange], words: [(NSRange, DiffDisplayLine.Kind)]) {
         let result = NSMutableAttributedString()
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 3.5; paragraph.lineBreakMode = .byClipping
-        let base: [NSAttributedString.Key: Any] = [.font: DiffStyle.font, .foregroundColor: NSColor.textColor, .paragraphStyle: paragraph]
+        let base: [NSAttributedString.Key: Any] = [.font: DiffStyle.font, .foregroundColor: Brand.textNS, .paragraphStyle: paragraph]
         var highlighter = SyntaxHighlighter(language: CodeLanguage.of(path))
         var blockOld = false, blockNew = false
         var ranges: [NSRange] = []; ranges.reserveCapacity(lines.count)

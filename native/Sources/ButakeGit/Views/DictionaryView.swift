@@ -25,7 +25,7 @@ struct DictionaryView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
                             if let entry {
-                                HStack(alignment: .firstTextBaseline) { Text("git \(entry.name)").font(.system(size: 27, weight: .semibold, design: .monospaced)); Spacer(); if entry.experimental { Text(L("experimental")).font(.caption2).foregroundStyle(.orange) } }
+                                HStack(alignment: .firstTextBaseline) { Text("git \(entry.name)").font(.system(size: 27, weight: .semibold, design: .monospaced)); Spacer(); if entry.experimental { Text(L("experimental")).font(.caption2).foregroundStyle(Brand.warning) } }
                                 Text(store.catalog.description(entry)).font(.title3).foregroundStyle(.secondary).textSelection(.enabled)
                                 HStack(spacing: 8) { Text(L(entry.category)).font(.caption); Text("·").foregroundStyle(.tertiary); Label(availability(entry), systemImage: installed(entry) ? "checkmark.circle.fill" : "info.circle").font(.caption).foregroundStyle(installed(entry) ? Brand.accent : .secondary) }
                                 Divider()

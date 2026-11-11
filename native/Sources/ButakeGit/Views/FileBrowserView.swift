@@ -62,7 +62,7 @@ struct FileEditorView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text((path as NSString).lastPathComponent).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                        if dirty { Text(L("unsavedChanges")).font(.system(size: 10, weight: .medium)).foregroundStyle(.orange).padding(.horizontal, 6).padding(.vertical, 1).background(.orange.opacity(0.12), in: Capsule()).transition(.opacity) }
+                        if dirty { Text(L("unsavedChanges")).font(.system(size: 10, weight: .medium)).foregroundStyle(Brand.warning).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.warning.opacity(0.12), in: Capsule()).transition(.opacity) }
                     }
                     let folder = (path as NSString).deletingLastPathComponent
                     if !folder.isEmpty { Label(folder, systemImage: "folder").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
@@ -85,7 +85,7 @@ struct FileEditorView: View {
             else { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
             Divider()
             VStack(alignment: .leading, spacing: 10) {
-                if !error.isEmpty && original != nil { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+                if !error.isEmpty && original != nil { Text(error).font(.caption).foregroundStyle(Brand.danger).textSelection(.enabled) }
                 HStack { Text(L(store.onProtectedMain ? "editorProtected" : "saveWorkingOnly")).font(.caption2).foregroundStyle(.secondary); Spacer(); Button(L("reloadFile")) { if dirty { discard = true } else { Task { await load() } } }.disabled(saving || original == nil); Button(L("close")) { if dirty { discard = true } else { dismiss() } }.keyboardShortcut(.cancelAction); Button(L("saveFile")) { Task { await save() } }.buttonStyle(.borderedProminent).keyboardShortcut("s").disabled(!dirty || !store.canWrite || saving) }
             }.padding(16).background(.bar)
         }.frame(minWidth: 800, idealWidth: 980, minHeight: 580, idealHeight: 700)

@@ -135,6 +135,10 @@ Estado del PR y revisión pendiente, aprobada o con cambios pedidos. **Checks ag
 
 Cambios y commits por bajar o subir junto a la cámara. Al pasar el cursor: cambiar de **repositorio** o **rama**, **buscar, bajar y subir** con confirmación en un panel flotante, y **hacer commit sin abrir la app**. Se desactiva en Ajustes o desde el mismo notch.
 
+### Temas
+
+**Butake Git** y **Drácula**, cada uno en claro y oscuro (o siguiendo al sistema). El tema cambia el acento, los fondos, los colores de cada tipo de cambio, el diff, el resaltado de código y el grafo de ramas. En Ajustes › General › Tema hay un **personalizador**: parte de un tema y cambia sus colores clave, con vista previa en vivo y valores separados para claro y oscuro.
+
 ### Crear, clonar y publicar
 
 - **Nuevo repositorio** (<kbd>⌘N</kbd>): `main` (y `develop` si quieres) con un `.gitignore` para macOS. Tus archivos no se incluyen solos.

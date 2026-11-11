@@ -27,11 +27,11 @@ struct NewRepositorySheet: View {
                 }
                 Toggle(L("newRepositoryDevelop"), isOn: $withDevelop).help(L("newRepositoryDevelopHelp"))
                 if !name.isEmpty {
-                    if isRepository { Label(String(format: L("newRepositoryExists"), name), systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.caption) }
+                    if isRepository { Label(String(format: L("newRepositoryExists"), name), systemImage: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning).font(.caption) }
                     else { Text(String(format: FileManager.default.fileExists(atPath: target) ? L("newRepositoryInExisting") : L("cloneWillCreate"), abbreviatePath(target))).font(.caption).foregroundStyle(.secondary) }
                 }
                 Text(L("newRepositoryContents")).font(.caption).foregroundStyle(.secondary)
-                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(.red).font(.caption) }
+                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.danger).font(.caption) }
             }.formStyle(.grouped)
             Divider()
             HStack {
@@ -118,7 +118,7 @@ struct PublishRepositorySheet: View {
                             Text("3. " + String(format: L("publishStepPush"), branches.sorted().joined(separator: ", ")))
                         }.font(.caption).foregroundStyle(.secondary)
                     }
-                    if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(.red).font(.caption).textSelection(.enabled) }
+                    if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.danger).font(.caption).textSelection(.enabled) }
                 }.formStyle(.grouped)
             }
             Divider()

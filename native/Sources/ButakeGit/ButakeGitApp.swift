@@ -2,26 +2,18 @@ import SwiftUI
 import AppKit
 
 @main struct ButakeGitApp: App {
-    @MainActor static func apply(appearance: String) {
-        NSApp.appearance = switch appearance {
-        case "dark": NSAppearance(named: .darkAqua)
-        case "light": NSAppearance(named: .aqua)
-        default: nil
-        }
-    }
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var workspace = WorkspaceStore()
     /// The window's `.task` runs again each time it is reopened; app-level startup must happen once.
     @State private var launched = false
-    @AppStorage("appearance") private var appearance = "system"
     @AppStorage("notchEnabled") private var notchEnabled = true
     var body: some Scene {
         Window("Butake Git", id: MainWindow.id) {
             WorkspaceView(store: workspace)
                 .tint(Brand.accent)
-                // Applied through AppKit: `preferredColorScheme(nil)` does not fully revert after an explicit
-                // scheme, leaving views with dark text on light backgrounds when switching to "Sistema".
-                .onChange(of: appearance, initial: true) { _, value in ButakeGitApp.apply(appearance: value) }
+                // Appearance applied through AppKit by the theme: `preferredColorScheme(nil)` does not fully revert
+                // after an explicit scheme, leaving dark text on light backgrounds when switching to "Sistema".
+                .onAppear { ThemeStore.shared.applyAppearance() }
                 .onChange(of: notchEnabled) { _, _ in NotchController.shared.update() }
                 .frame(minWidth: 850, minHeight: 580)
                 .modifier(MainWindowOpener())

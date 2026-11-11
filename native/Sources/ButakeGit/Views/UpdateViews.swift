@@ -40,14 +40,14 @@ struct UpdateSheet: View {
             }
             if updates.updateAvailable, let latest = updates.latest {
                 ScrollView {
-                    Text(notes(latest.notes)).font(.system(size: 12)).lineSpacing(3).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(notes(latest.notes)).font(.system(size: 13)).lineSpacing(4).frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled).padding(12)
                 }
-                .frame(minHeight: 90, maxHeight: 220).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+                .frame(minHeight: 160, maxHeight: 380).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
                 Label(L("updateVerification"), systemImage: "checkmark.shield").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if case .failed(let message) = updates.phase {
-                Label(message, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                Label(message, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(Brand.warning).fixedSize(horizontal: false, vertical: true)
             }
             if busy {
                 HStack(spacing: 10) { Spinner(size: 14); Text(progressText).font(.callout).foregroundStyle(.secondary) }
@@ -63,7 +63,7 @@ struct UpdateSheet: View {
                 }
             }
         }
-        .padding(22).frame(width: 480)
+        .padding(26).frame(width: 640)
     }
     private var title: String {
         switch updates.phase {

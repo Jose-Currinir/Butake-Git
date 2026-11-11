@@ -63,7 +63,7 @@ struct ChangeTreePane: View {
                 }
             }
         }
-        .background(.background)
+        .background(Brand.surface)
         .onChange(of: tree.revision) { _, _ in
             // Drop overrides once Git agrees; a failed stage clears its leftovers shortly after.
             guard !optimistic.isEmpty else { return }
@@ -165,7 +165,7 @@ private struct TreeRow: View {
                 } else { Color.clear }
             }.frame(width: 12)
             if let file = node.file, file.conflict {
-                Button(action: onCheck) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }.buttonStyle(.borderless).help(L("resolveConflict"))
+                Button(action: onCheck) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning) }.buttonStyle(.borderless).help(L("resolveConflict"))
             } else {
                 TreeCheckbox(state: state, action: onCheck)
                     .disabled(store.busy || store.terminalActive)
@@ -182,7 +182,7 @@ private struct TreeRow: View {
                     Text(node.name).font(.system(size: 12, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.middle)
                         .strikethrough(file.kind == .deleted, color: .secondary)
                     if file.kind == .renamed, let original = file.originalPath {
-                        Text(String(format: L("movedFrom"), original)).font(.system(size: 9)).foregroundStyle(.purple).lineLimit(1).truncationMode(.head)
+                        Text(String(format: L("movedFrom"), original)).font(.system(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head)
                     }
                 }
                 Spacer(minLength: 4)

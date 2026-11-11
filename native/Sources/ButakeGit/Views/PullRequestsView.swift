@@ -34,14 +34,14 @@ struct PullRequestsView: View {
                     List(requests, selection: $selected) { pr in
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: pr.draft ? "pencil.circle" : pr.state == .merged ? "arrow.triangle.merge" : pr.state == .closed ? "xmark.circle" : "arrow.triangle.pull")
-                                .foregroundStyle(pr.draft ? Color.secondary : pr.state == .merged ? .purple : pr.state == .closed ? .red : Brand.accent).frame(width: 16).padding(.top, 2)
+                                .foregroundStyle(pr.draft ? Color.secondary : pr.state == .merged ? Brand.special : pr.state == .closed ? Brand.danger : Brand.accent).frame(width: 16).padding(.top, 2)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(pr.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(2)
                                 HStack(spacing: 4) {
                                     Text("#\(pr.id) · \(pr.author)")
                                     if let updated = pr.updated { Text("· " + RelativeDateCache.shared.text(for: updated)) }
                                 }.font(.caption).foregroundStyle(.secondary)
-                                Text("\(pr.source) → \(pr.target)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.blue).lineLimit(1).truncationMode(.middle)
+                                Text("\(pr.source) → \(pr.target)").font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.info).lineLimit(1).truncationMode(.middle)
                             }
                         }.padding(.vertical, 5).tag(pr.id).accessibilityIdentifier("pr.\(pr.id)")
                     }
@@ -67,7 +67,7 @@ struct PullRequestsView: View {
 struct CheckIcon: View {
     let state: CheckState
     var body: some View {
-        let (icon, color): (String, Color) = switch state { case .success: ("checkmark.circle.fill", Brand.accent); case .failure: ("xmark.circle.fill", .red); case .pending: ("clock.fill", .orange); case .neutral: ("minus.circle", .secondary) }
+        let (icon, color): (String, Color) = switch state { case .success: ("checkmark.circle.fill", Brand.accent); case .failure: ("xmark.circle.fill", Brand.danger); case .pending: ("clock.fill", Brand.warning); case .neutral: ("minus.circle", .secondary) }
         Image(systemName: icon).foregroundStyle(color)
     }
 }
@@ -88,7 +88,7 @@ private struct NewPullRequestSheet: View {
             }
             TextEditor(text: $description).font(.body).frame(height: 170).padding(4).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 6)).accessibilityLabel(L("description"))
             Text(L("prPushHint")).font(.caption).foregroundStyle(.secondary)
-            if !error.isEmpty { Text(error).foregroundStyle(.red).font(.caption).textSelection(.enabled) }
+            if !error.isEmpty { Text(error).foregroundStyle(Brand.danger).font(.caption).textSelection(.enabled) }
             HStack {
                 if let url = repo.provider.webCompareURL(repo, branch: source) { Link(String(format: L("openIn"), repo.provider.title), destination: url).font(.caption) }
                 Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }

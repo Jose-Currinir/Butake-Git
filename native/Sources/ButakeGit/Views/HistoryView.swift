@@ -72,7 +72,7 @@ struct HistoryView: View {
         }
         .task(id: "\(scope)|\(pathFilterKey)|\(store.repository?.commits.count ?? 0)") {
             let query = SearchQuery(store.search)
-            guard !scope.isEmpty || query.hasPathFilters, let root = store.repository?.root else { withAnimation(.smooth) { scopedHashes = nil }; return }
+            guard !scope.isEmpty || query.hasPathFilters, let root = store.repository?.root else { scopedHashes = nil; return }
             // Branch scope and/or commits that touched matching paths (@archivo / @ext).
             var args = ["log", "--format=%H"]
             if !scope.isEmpty { args.append(scope) }
@@ -80,7 +80,7 @@ struct HistoryView: View {
                 store.ensureDeepHistory()
                 await store.loadTrackedFiles()
                 let paths = query.matchingPaths(in: store.trackedFiles)
-                guard !paths.isEmpty else { withAnimation(.smooth) { scopedHashes = [] }; return }
+                guard !paths.isEmpty else { scopedHashes = []; return }
                 // One exact file: follow it through renames.
                 if paths.count == 1, query.exts.isEmpty, query.files.first == paths.first { args.append("--follow") }
                 args += ["--"] + paths
@@ -88,7 +88,7 @@ struct HistoryView: View {
             let file: String? = query.hasPathFilters ? "" : nil
             do {
                 let ordered = try await store.engine.query(root, args).split(separator: "\n").map(String.init)
-                withAnimation(.smooth) { scopedHashes = Set(ordered) }
+                scopedHashes = Set(ordered)  // no animation: animating the removal of thousands of rows froze the app for minutes
                 // Show the file's latest commit in the inspector instead of one outside the filter.
                 if file != nil, let selected = store.selectedCommit?.hash, !ordered.contains(selected), let first = ordered.first { store.selectCommit(hash: first) }
             } catch { store.fail(error) }
@@ -218,8 +218,8 @@ struct ReferenceChip: View {
         let (icon, color): (String, Color) = switch reference.kind {
         case .head: ("location.fill", Brand.accent)
         case .branch: ("arrow.triangle.branch", Brand.accent)
-        case .remote: ("network", .blue)
-        case .tag: ("tag.fill", .orange)
+        case .remote: ("network", Brand.info)
+        case .tag: ("tag.fill", Brand.warning)
         }
         Label(reference.name, systemImage: icon).labelStyle(ChipLabelStyle())
             .font(.system(size: 9, weight: reference.kind == .head ? .bold : .medium)).foregroundStyle(color)
@@ -287,6 +287,7 @@ struct CommitInspector: View {
     @State private var files: [CommitFileChange] = []
     @State private var body_ = ""
     @State private var viewing: CommitFileChange?
+    @State private var fileLimit = 100
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -322,9 +323,17 @@ struct CommitInspector: View {
                             if !files.isEmpty { StatsBadge(stats: LineStats(additions: adds, deletions: dels)) }
                         }
                         if files.isEmpty { Text("—").foregroundStyle(.secondary) }
-                        VStack(spacing: 2) {
-                            ForEach(files) { file in CommitFileRow(file: file) { viewing = file } }
-                        }.animation(.smooth, value: files.map(\.id))
+                        // Big commits (template imports, vendored code) can touch thousands of files: building a row for
+                        // each one exhausted SwiftUI's graph and crashed the app. Show them in pages.
+                        LazyVStack(spacing: 2) {
+                            ForEach(files.prefix(fileLimit)) { file in CommitFileRow(file: file) { viewing = file } }
+                        }
+                        if files.count > fileLimit {
+                            Button { fileLimit += 400 } label: {
+                                Label(String(format: L("showMoreFiles"), min(400, files.count - fileLimit), files.count - fileLimit), systemImage: "chevron.down.circle")
+                                    .font(.system(size: 11, weight: .medium)).frame(maxWidth: .infinity)
+                            }.buttonStyle(.borderless).padding(.vertical, 4).accessibilityIdentifier("inspector.moreFiles")
+                        }
                         Divider()
                         VStack(spacing: 6) {
                             Button { store.compareWithHead(commit) } label: { Label(commit.hash == store.refs.headHash ? L("compareWorking") : L("compare"), systemImage: "arrow.left.arrow.right").frame(maxWidth: .infinity) }.accessibilityIdentifier("inspector.compare")
@@ -337,13 +346,14 @@ struct CommitInspector: View {
                 } else { ContentUnavailableView(L("noSelection"), systemImage: "point.3.connected.trianglepath.dotted", description: Text(L("selectCommit"))) }
             }.padding(20)
             .animation(.smooth(duration: 0.22), value: store.selectedCommit?.hash)
-        }.background(.background)
+        }.background(Brand.surface)
         .onChange(of: viewing?.id) { _, _ in
             guard let file = viewing, let commit = store.selectedCommit else { return }
             store.showDiff(file.path, subtitle: "\(commit.shortHash) · \(commit.subject)", args: ["show", "--format=", "--no-ext-diff", "--no-textconv", "--no-color", "--diff-merges=first-parent", commit.hash, "--", file.path])
             viewing = nil
         }
         .task(id: store.selectedCommit?.hash) {
+            fileLimit = 100
             guard let root = store.repository?.root, let hash = store.selectedCommit?.hash else { files = []; body_ = ""; return }
             do {
                 async let status = store.engine.query(root, ["show", "--format=", "--name-status", "-z", "--no-renames", "--diff-merges=first-parent", hash])
@@ -404,8 +414,8 @@ struct StatsBadge: View {
             else {
                 // No numeric transition or tooltip: this badge sits in every changed-file row and its numbers move
                 // with each write of an agent; animated digits are rasterized on the main thread.
-                if let additions = stats.additions, additions > 0 { Text("+\(additions)").foregroundStyle(inverted ? Color.white : Brand.accent) }
-                if let deletions = stats.deletions, deletions > 0 { Text("−\(deletions)").foregroundStyle(inverted ? Color.white.opacity(0.85) : .red) }
+                if let additions = stats.additions, additions > 0 { Text("+\(additions)").foregroundStyle(inverted ? Color.white : Brand.addition) }
+                if let deletions = stats.deletions, deletions > 0 { Text("−\(deletions)").foregroundStyle(inverted ? Color.white.opacity(0.85) : Brand.danger) }
             }
         }.font(.system(size: 9, weight: .semibold, design: .monospaced)).fixedSize()
         .accessibilityElement(children: .ignore).accessibilityLabel(description)
@@ -440,7 +450,7 @@ private struct CommitActions: View {
             if isHead { Label(L("isHeadNote"), systemImage: "location.fill").font(.caption2).foregroundStyle(.secondary) }
             else if inHead { Label(L("inHeadNote"), systemImage: "checkmark.circle").font(.caption2).foregroundStyle(.secondary) }
             else { Label(L("notInHeadNote"), systemImage: "arrow.triangle.branch").font(.caption2).foregroundStyle(.secondary) }
-            if store.onProtectedMain { Label(L("editorProtected"), systemImage: "lock").font(.caption2).foregroundStyle(.orange) }
+            if store.onProtectedMain { Label(L("editorProtected"), systemImage: "lock").font(.caption2).foregroundStyle(Brand.warning) }
         }
         .popover(isPresented: $naming, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 10) {
@@ -527,8 +537,8 @@ struct SyncChip: View {
     let mark: SyncMark
     var body: some View {
         let (text, icon, color): (String, String, Color) = switch mark {
-        case .onlyMain: (L("onlyMain"), "arrow.up.circle", .blue)
-        case .onlyDevelop: (L("onlyDevelop"), "arrow.down.circle", .orange)
+        case .onlyMain: (L("onlyMain"), "arrow.up.circle", Brand.info)
+        case .onlyDevelop: (L("onlyDevelop"), "arrow.down.circle", Brand.warning)
         case .copied: (L("inBoth"), "checkmark.circle", .secondary)
         }
         Label(text, systemImage: icon).labelStyle(SyncChipStyle())
@@ -579,7 +589,7 @@ private struct CommitContextMenu: View {
 
 extension ChangeKind {
     var color: Color {
-        switch self { case .added: Brand.accent; case .modified: .blue; case .deleted: .red; case .renamed: .purple; case .conflict: .orange }
+        switch self { case .added: Brand.addition; case .modified: Brand.info; case .deleted: Brand.danger; case .renamed: Brand.special; case .conflict: Brand.warning }
     }
 }
 /// "Nuevo", "Eliminado", "Movido"… as a compact capsule (or icon only).

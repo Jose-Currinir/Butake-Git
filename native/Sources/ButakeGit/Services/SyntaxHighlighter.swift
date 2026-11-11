@@ -63,21 +63,16 @@ enum CodeLanguage: Hashable {
 }
 
 enum SyntaxPalette {
-    private static func color(_ light: UInt32, _ dark: UInt32) -> NSColor {
-        NSColor(name: nil) { appearance in
-            let value = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
-            return NSColor(srgbRed: CGFloat((value >> 16) & 0xFF) / 255, green: CGFloat((value >> 8) & 0xFF) / 255, blue: CGFloat(value & 0xFF) / 255, alpha: 1)
-        }
-    }
-    static let keyword = color(0xAD3DA4, 0xFF7AB2)
-    static let string = color(0xC41A16, 0xFC6A5D)
-    static let comment = color(0x6C7986, 0x7F8C98)
-    static let number = color(0x1C00CF, 0xD9C97C)
-    static let type = color(0x3F6E74, 0x9EF1DD)
-    static let variable = color(0x0F68A0, 0x67B7A4)
-    static let attribute = color(0x815F03, 0xFD8F3F)
-    static let tag = color(0x0B4F79, 0x5DD8FF)
-    static let function = color(0x326D74, 0x67B7A4)
+    // From the active theme (Butake Git keeps its Xcode-like colors; Drácula uses its own palette).
+    static var keyword: NSColor { Brand.theme.keyword.ns }
+    static var string: NSColor { Brand.theme.string.ns }
+    static var comment: NSColor { Brand.theme.comment.ns }
+    static var number: NSColor { Brand.theme.number.ns }
+    static var type: NSColor { Brand.theme.type.ns }
+    static var variable: NSColor { Brand.theme.variable.ns }
+    static var attribute: NSColor { Brand.theme.attribute.ns }
+    static var tag: NSColor { Brand.theme.tag.ns }
+    static var function: NSColor { Brand.theme.function.ns }
 }
 
 /// Colors spans of a single line. Multi-line comments are tracked with `inBlockComment`.

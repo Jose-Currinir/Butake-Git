@@ -7,6 +7,7 @@ struct CodeEditorView: NSViewRepresentable {
     @Binding var text: String
     var path: String
     var editable = true
+    var themeSignature = Brand.theme.signature
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -14,7 +15,7 @@ struct CodeEditorView: NSViewRepresentable {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay; scroll.borderType = .noBorder; scroll.drawsBackground = true
-        scroll.backgroundColor = .textBackgroundColor; scroll.clipsToBounds = true
+        scroll.backgroundColor = Brand.surfaceNS; scroll.clipsToBounds = true
         let view = CodeTextView(frame: .zero)
         view.delegate = context.coordinator
         view.isRichText = false; view.importsGraphics = false; view.allowsUndo = true
@@ -22,7 +23,7 @@ struct CodeEditorView: NSViewRepresentable {
         view.isAutomaticTextReplacementEnabled = false; view.isAutomaticSpellingCorrectionEnabled = false
         view.isContinuousSpellCheckingEnabled = false; view.isGrammarCheckingEnabled = false; view.smartInsertDeleteEnabled = false
         view.usesFindBar = true; view.isIncrementalSearchingEnabled = true
-        view.font = CodeEditorStyle.font; view.textColor = .textColor; view.backgroundColor = .textBackgroundColor
+        view.font = CodeEditorStyle.font; view.textColor = Brand.textNS; view.backgroundColor = Brand.surfaceNS
         view.insertionPointColor = NSColor(Brand.accent)
         view.selectedTextAttributes = [.backgroundColor: NSColor(Brand.accent).withAlphaComponent(0.22)]
         view.textContainerInset = NSSize(width: 10, height: 12)
@@ -33,7 +34,7 @@ struct CodeEditorView: NSViewRepresentable {
         view.autoresizingMask = [.width]
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = 3; paragraph.defaultTabInterval = CodeEditorStyle.advance * 4; paragraph.tabStops = []
         view.defaultParagraphStyle = paragraph
-        view.typingAttributes = [.font: CodeEditorStyle.font, .foregroundColor: NSColor.textColor, .paragraphStyle: paragraph]
+        view.typingAttributes = [.font: CodeEditorStyle.font, .foregroundColor: Brand.textNS, .paragraphStyle: paragraph]
         scroll.documentView = view
         let ruler = CodeLineRuler(scrollView: scroll, orientation: .verticalRuler)
         ruler.clientView = view; scroll.verticalRulerView = ruler; scroll.hasVerticalRuler = true; scroll.rulersVisible = true
@@ -47,6 +48,13 @@ struct CodeEditorView: NSViewRepresentable {
         guard let view = scroll.documentView as? CodeTextView else { return }
         context.coordinator.parent = self
         view.isEditable = editable
+        if context.coordinator.themeSignature != themeSignature {
+            context.coordinator.themeSignature = themeSignature
+            scroll.backgroundColor = Brand.surfaceNS; view.backgroundColor = Brand.surfaceNS; view.textColor = Brand.textNS
+            view.insertionPointColor = NSColor(Brand.accent)
+            view.selectedTextAttributes = [.backgroundColor: NSColor(Brand.accent).withAlphaComponent(0.22)]
+            context.coordinator.highlight(view); scroll.verticalRulerView?.needsDisplay = true
+        }
         if view.string != text {
             let selection = view.selectedRanges
             view.string = text; context.coordinator.highlight(view)
@@ -57,6 +65,7 @@ struct CodeEditorView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: CodeEditorView
         weak var textView: CodeTextView?
+        var themeSignature = Brand.theme.signature
         private var pending: DispatchWorkItem?
         init(_ parent: CodeEditorView) { self.parent = parent }
 
@@ -92,7 +101,7 @@ struct CodeEditorView: NSViewRepresentable {
             let highlighter = SyntaxHighlighter(language: CodeLanguage.of(parent.path))
             storage.beginEditing()
             let full = NSRange(location: 0, length: text.length)
-            storage.setAttributes([.font: CodeEditorStyle.font, .foregroundColor: NSColor.textColor, .paragraphStyle: view.defaultParagraphStyle ?? .default], range: full)
+            storage.setAttributes([.font: CodeEditorStyle.font, .foregroundColor: Brand.textNS, .paragraphStyle: view.defaultParagraphStyle ?? .default], range: full)
             var inComment = false
             text.enumerateSubstrings(in: full, options: [.byLines, .substringNotRequired]) { _, range, _, _ in
                 let line = text.substring(with: range)
@@ -139,7 +148,7 @@ private final class CodeLineRuler: NSRulerView {
     override func drawHashMarksAndLabels(in rect: NSRect) {
         NSGraphicsContext.saveGraphicsState(); defer { NSGraphicsContext.restoreGraphicsState() }
         NSBezierPath(rect: bounds).addClip()
-        NSColor.textBackgroundColor.setFill(); rect.intersection(bounds).fill()
+        Brand.surfaceNS.setFill(); rect.intersection(bounds).fill()
         guard let view = clientView as? NSTextView, let manager = view.layoutManager, let container = view.textContainer else { return }
         let text = view.string as NSString
         let caretLine = text.substring(to: min(view.selectedRange().location, text.length)).reduce(1) { $1 == "\n" ? $0 + 1 : $0 }

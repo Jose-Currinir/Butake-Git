@@ -15,6 +15,8 @@ struct WorkspaceView: View {
                 WorkspaceDetail(store: store)
                 StatusBar(store: store)
             }
+            // Themes with their own palette (Drácula) paint the content; Butake Git keeps the system backgrounds.
+            .background { if Brand.customBackgrounds { Brand.surface.ignoresSafeArea() } }
             .overlay(alignment: .top) { if store.busy || store.terminalActive { ActivityBar(active: true).transition(.opacity) } }
             .overlay(alignment: .bottom) { if let toast = store.toast { ToastView(toast: toast).padding(.bottom, 42).transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.92))) } }
             .animation(.smooth(duration: 0.25), value: store.repository?.operation)
@@ -200,10 +202,11 @@ private struct SidebarView: View {
                         } header: { Text("\(L("remoteBranches")) · \(repo.remoteOnly.count)") }
                     }
                 }
-            }.listStyle(.sidebar).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize)
+            }.listStyle(.sidebar).scrollContentBackground(Brand.customBackgrounds ? .hidden : .automatic).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize)
             HStack { VersionBadge(updates: UpdateService.shared); Spacer(); SettingsLink { Image(systemName: "gearshape").font(.system(size: 13)) }.buttonStyle(.borderless).help(L("settings")) }.padding(.horizontal, 16).padding(.vertical, 10)
                 .animation(.snappy, value: UpdateService.shared.updateAvailable)
         }
+        .background { if Brand.customBackgrounds { (Brand.theme.sidebar?.color ?? Brand.background).ignoresSafeArea() } }
     }
 }
 private struct WelcomeView: View {
@@ -280,7 +283,7 @@ private struct StatusBar: View {
                 else {
                     HStack(spacing: 8) {
                         Label("\(repo.ahead)", systemImage: "arrow.up").foregroundStyle(repo.ahead > 0 ? Brand.accent : .secondary).contentTransition(.numericText(value: Double(repo.ahead)))
-                        Label("\(repo.behind)", systemImage: "arrow.down").foregroundStyle(repo.behind > 0 ? Color.orange : .secondary).contentTransition(.numericText(value: Double(repo.behind)))
+                        Label("\(repo.behind)", systemImage: "arrow.down").foregroundStyle(repo.behind > 0 ? Brand.warning : .secondary).contentTransition(.numericText(value: Double(repo.behind)))
                     }.monospacedDigit().help(L("aheadBehindHelp"))
                 }
             }
@@ -296,15 +299,15 @@ struct OperationConfirmation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                Image(systemName: operation.destructive ? "exclamationmark.triangle.fill" : "arrow.triangle.branch").font(.system(size: 22, weight: .semibold)).foregroundStyle(operation.destructive ? Color.red : Brand.accent)
-                    .frame(width: 42, height: 42).background((operation.destructive ? Color.red : Brand.accent).opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                Image(systemName: operation.destructive ? "exclamationmark.triangle.fill" : "arrow.triangle.branch").font(.system(size: 22, weight: .semibold)).foregroundStyle(operation.destructive ? Brand.danger : Brand.accent)
+                    .frame(width: 42, height: 42).background((operation.destructive ? Brand.danger : Brand.accent).opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     .symbolEffect(.bounce, value: appeared)
-                VStack(alignment: .leading, spacing: 2) { Text(operation.destructive ? operation.title : L("confirmation")).font(.title2.weight(.semibold)); if operation.destructive { Text(L("cannotUndo")).font(.caption).foregroundStyle(.red) } }
+                VStack(alignment: .leading, spacing: 2) { Text(operation.destructive ? operation.title : L("confirmation")).font(.title2.weight(.semibold)); if operation.destructive { Text(L("cannotUndo")).font(.caption).foregroundStyle(Brand.danger) } }
             }
             Text(operation.detail ?? L("confirmationDetail")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             LabeledContent(L("repository"), value: operation.root).font(.caption)
             Text(operation.preview).font(.system(.body, design: .monospaced)).textSelection(.enabled).accessibilityIdentifier("confirm.preview").frame(maxWidth: .infinity, alignment: .leading).padding(14).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("confirm.cancel"); Button(operation.destructive ? L("discard") : L("confirm"), role: operation.destructive ? .destructive : nil) { dismiss(); Task { await store.perform(operation) } }.buttonStyle(.borderedProminent).tint(operation.destructive ? .red : Brand.accent).keyboardShortcut(.defaultAction).accessibilityIdentifier("confirm.execute") }
+            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("confirm.cancel"); Button(operation.destructive ? L("discard") : L("confirm"), role: operation.destructive ? .destructive : nil) { dismiss(); Task { await store.perform(operation) } }.buttonStyle(.borderedProminent).tint(operation.destructive ? Brand.danger : Brand.accent).keyboardShortcut(.defaultAction).accessibilityIdentifier("confirm.execute") }
         }.padding(26).frame(width: 540)
         .onAppear { appeared = true }
     }
@@ -323,14 +326,14 @@ struct OperationBanner: View {
     var conflicts: Int { store.changes.conflicts.count }
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: conflicts > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill").foregroundStyle(conflicts > 0 ? .orange : Brand.accent).opacity(pulse && conflicts > 0 ? 0.55 : 1)
+            Image(systemName: conflicts > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill").foregroundStyle(conflicts > 0 ? Brand.warning : Brand.accent).opacity(pulse && conflicts > 0 ? 0.55 : 1)
             VStack(alignment: .leading, spacing: 1) {
                 Text(L("op_\(operation)") == "op_\(operation)" ? "\(L("operationInProgress")): \(operation)" : L("op_\(operation)")).fontWeight(.semibold)
                 Text(conflicts > 0 ? String(format: L("conflictsPending"), conflicts) : L("conflictsDone")).foregroundStyle(.secondary).contentTransition(.numericText(value: Double(conflicts)))
             }
             Spacer()
             if conflicts > 0 {
-                Button(L("resolveNow")) { store.resolveNextConflict() }.buttonStyle(.borderedProminent).tint(.orange).accessibilityIdentifier("banner.resolve")
+                Button(L("resolveNow")) { store.resolveNextConflict() }.buttonStyle(.borderedProminent).tint(Brand.warning).accessibilityIdentifier("banner.resolve")
             } else {
                 // Continue may open Git's editor, so it runs in the PTY after confirmation.
                 Button(L("continue")) { Task { await store.prepare(operation, arguments: "--continue", interactive: true) } }.buttonStyle(.borderedProminent).tint(Brand.accent).accessibilityIdentifier("banner.continue")
@@ -339,7 +342,7 @@ struct OperationBanner: View {
             Button(L("abortOperation"), role: .destructive) { store.abortOperation() }.accessibilityIdentifier("banner.abort")
             Button { store.inspect(operation, arguments: "--continue") } label: { Image(systemName: "terminal") }.help(L("inspectConsole")).accessibilityLabel(L("inspectConsole"))
         }
-        .font(.caption).controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8).background((conflicts > 0 ? Color.orange : Brand.accent).opacity(0.12))
+        .font(.caption).controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8).background((conflicts > 0 ? Brand.warning : Brand.accent).opacity(0.12))
         .disabled(store.busy || store.terminalActive)
         .animation(.snappy, value: conflicts)
         .onAppear { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } }
@@ -372,7 +375,7 @@ struct PullAssistantView: View {
         }.padding(24).frame(width: 520)
     }
     private var icon: String { switch problem.code { case "pull_diverged": "arrow.triangle.branch"; case "pull_local_changes": "tray.full"; case "pull_conflicts": "exclamationmark.triangle.fill"; case "pull_no_upstream": "icloud.slash"; default: "wifi.exclamationmark" } }
-    private var tint: Color { problem.code == "pull_conflicts" ? .orange : Brand.accent }
+    private var tint: Color { problem.code == "pull_conflicts" ? Brand.warning : Brand.accent }
     private var title: String { switch problem.code { case "pull_diverged": L("pullDivergedTitle"); case "pull_local_changes": L("pullLocalTitle"); case "pull_conflicts": L("pullConflictsTitle"); case "pull_no_upstream": L("pullNoUpstreamTitle"); default: L("pullRemoteTitle") } }
     private var body_: String {
         switch problem.code {
@@ -521,7 +524,7 @@ struct ToastView: View {
     let toast: Toast
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: toast.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(toast.destructive ? Color.orange : Brand.accent).symbolEffect(.bounce, value: toast.id)
+            Image(systemName: toast.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(toast.destructive ? Brand.warning : Brand.accent).symbolEffect(.bounce, value: toast.id)
             Text(toast.message).font(.system(size: 12, weight: .medium)).lineLimit(2)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
@@ -580,7 +583,7 @@ private struct SidebarBranchRow: View {
             Image(systemName: store.isProtected(branch.name) ? "lock" : "arrow.triangle.branch").font(.caption).foregroundStyle(branch.current ? Brand.accent : .secondary)
             Text(grouped ? BranchNaming.leaf(branch.name) : branch.name).lineLimit(1).truncationMode(.middle).fontWeight(branch.current ? .semibold : .regular)
             Spacer()
-            if branch.gone == true { Image(systemName: "cloud.slash").font(.system(size: 9)).foregroundStyle(.orange).help(L("branchGone")) }
+            if branch.gone == true { Image(systemName: "cloud.slash").font(.system(size: 9)).foregroundStyle(Brand.warning).help(L("branchGone")) }
             if (branch.ahead ?? 0) > 0 || (branch.behind ?? 0) > 0 { Text(String(format: L("aheadBehind"), branch.ahead ?? 0, branch.behind ?? 0)).font(.system(size: 9, weight: .medium).monospacedDigit()).foregroundStyle(.secondary) }
             if branch.current { Circle().fill(Brand.accent).frame(width: 6, height: 6).shadow(color: Brand.accent.opacity(0.6), radius: hovering ? 4 : 0) }
             else if hovering { Image(systemName: "info.circle").font(.system(size: 10)).foregroundStyle(.secondary).transition(.opacity) }
@@ -630,7 +633,7 @@ private struct SidebarBranchCard: View {
             if branch.current, let repo = store.repository, !branch.upstream.isEmpty {
                 HStack(spacing: 12) {
                     Label("\(repo.ahead) \(L("toPush"))", systemImage: "arrow.up").foregroundStyle(repo.ahead > 0 ? Brand.accent : .secondary)
-                    Label("\(repo.behind) \(L("toPull"))", systemImage: "arrow.down").foregroundStyle(repo.behind > 0 ? Color.orange : .secondary)
+                    Label("\(repo.behind) \(L("toPull"))", systemImage: "arrow.down").foregroundStyle(repo.behind > 0 ? Brand.warning : .secondary)
                 }.font(.caption.monospacedDigit())
             }
             if store.isProtected(branch.name) { Label(String(format: L("protectedMain"), branch.name), systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary) }

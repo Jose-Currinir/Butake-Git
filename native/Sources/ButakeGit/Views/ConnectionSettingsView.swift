@@ -12,7 +12,6 @@ struct ConnectionSettingsView: View {
 }
 
 private struct GeneralSettings: View {
-    @AppStorage("appearance") private var appearance = "system"
     @AppStorage("notchEnabled") private var notchEnabled = true
     @AppStorage("autoFetch") private var autoFetch = true
     var body: some View {
@@ -25,9 +24,7 @@ private struct GeneralSettings: View {
                 Text(L(NotchGeometry.current() == nil ? "notchUnavailable" : "notchHelp")).font(.caption).foregroundStyle(.secondary)
             }
             UpdateSettingsSection()
-            Section(L("appearance")) {
-                Picker(L("appearance"), selection: $appearance) { Text(L("system")).tag("system"); Text(L("light")).tag("light"); Text(L("dark")).tag("dark") }.pickerStyle(.segmented)
-            }
+            ThemeSettingsSection()
         }.formStyle(.grouped)
     }
 }
@@ -88,7 +85,7 @@ private struct ProviderAccountCard: View {
                     .accessibilityIdentifier("accounts.\(provider.rawValue).save")
                 if saved { Button(L("testConnection")) { Task { await testSaved() } }.disabled(testing); Button(L("disconnect"), role: .destructive) { ProviderVault.remove(provider); saved = false; connectedAs = ""; status = ""; token = "" } }
             }
-            if !status.isEmpty { Label(status, systemImage: failed ? "exclamationmark.triangle" : "checkmark.circle").font(.caption).foregroundStyle(failed ? .red : Brand.accent).textSelection(.enabled) }
+            if !status.isEmpty { Label(status, systemImage: failed ? "exclamationmark.triangle" : "checkmark.circle").font(.caption).foregroundStyle(failed ? Brand.danger : Brand.accent).textSelection(.enabled) }
         }
         .padding(16).background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(saved ? Brand.accent.opacity(0.4) : Color.secondary.opacity(0.15)))

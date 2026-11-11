@@ -173,7 +173,7 @@ struct NotchView: View {
             }.frame(width: NotchModel.wing)
             Spacer(minLength: 0)
             HStack(spacing: 3) {
-                if incoming > 0 { Image(systemName: "arrow.down").foregroundStyle(.orange).symbolEffect(.bounce, value: model.pulse); Text(incoming, format: .number) }
+                if incoming > 0 { Image(systemName: "arrow.down").foregroundStyle(Brand.warning).symbolEffect(.bounce, value: model.pulse); Text(incoming, format: .number) }
                 else if outgoing > 0 { Image(systemName: "arrow.up").foregroundStyle(Brand.green); Text(outgoing, format: .number) }
             }.frame(width: NotchModel.wing)
         }
@@ -229,7 +229,7 @@ struct NotchView: View {
                 NotchDivider()
                 NotchStat(value: lineTotals, label: L("notchLines"), tint: .white)
                 NotchDivider()
-                NotchStat(value: incoming.formatted(), label: L("notchIncoming"), tint: incoming > 0 ? .orange : .white)
+                NotchStat(value: incoming.formatted(), label: L("notchIncoming"), tint: incoming > 0 ? Brand.warning : .white)
                 NotchDivider()
                 NotchStat(value: outgoing.formatted(), label: L("notchOutgoing"), tint: outgoing > 0 ? Brand.green : .white)
                 NotchDivider()
@@ -257,7 +257,7 @@ struct NotchView: View {
         if repo?.remote.isEmpty ?? true { return L("noUpstream") }
         return L("upToDate")
     }
-    private var statusColor: Color { incoming > 0 ? .orange : outgoing > 0 ? Brand.green : .white.opacity(0.65) }
+    private var statusColor: Color { incoming > 0 ? Brand.warning : outgoing > 0 ? Brand.green : .white.opacity(0.65) }
     private var lineTotals: String {
         let stats = store.fileStats.values
         let add = stats.compactMap(\.additions).reduce(0, +), del = stats.compactMap(\.deletions).reduce(0, +)

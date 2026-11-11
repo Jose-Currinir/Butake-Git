@@ -97,7 +97,7 @@ struct BranchesView: View {
             else {
                 Text(L(value.mergeBase == nil ? "tipComparison" : "ancestorComparison")).font(.caption2).foregroundStyle(.secondary).padding(.horizontal)
                 List(value.files, selection: $fileSelection) { file in
-                    HStack { Image(systemName: "doc.text").foregroundStyle(.secondary); Text(file.path).font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle); Spacer(); Text(file.additions.map { "+\($0)" } ?? L("binary")).foregroundStyle(Brand.accent); Text(file.deletions.map { "−\($0)" } ?? "").foregroundStyle(.red) }.font(.caption.monospacedDigit()).padding(.vertical, 4).tag(file.path)
+                    HStack { Image(systemName: "doc.text").foregroundStyle(.secondary); Text(file.path).font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle); Spacer(); Text(file.additions.map { "+\($0)" } ?? L("binary")).foregroundStyle(Brand.accent); Text(file.deletions.map { "−\($0)" } ?? "").foregroundStyle(Brand.danger) }.font(.caption.monospacedDigit()).padding(.vertical, 4).tag(file.path)
                 }.listStyle(.inset).overlay { if value.files.isEmpty { ContentUnavailableView(L("noBranchChanges"), systemImage: "equal.circle") } }
                 .onChange(of: fileSelection) { _, path in if let path { comparison = BranchComparison(file: path, head: value.head, base: value.mergeBase ?? value.baseHead) } }
 
@@ -146,7 +146,7 @@ private struct BranchDiffSheet: View {
     let store: WorkspaceStore; let comparison: BranchComparison
     @State private var text = ""
     @State private var error = ""
-    var body: some View { VStack(spacing: 0) { HStack { Text(comparison.file).font(.headline).lineLimit(1); Spacer(); Button(L("close")) { dismiss() } }.padding(); Divider(); if !error.isEmpty { Text(error).foregroundStyle(.red).padding() } else { DiffView(text: text, path: comparison.file) } }.frame(width: 850, height: 600).task { guard let root = store.repository?.root else { return }; do { text = try await store.engine.call(["method": "branchDiff", "path": root, "head": comparison.head, "base": comparison.base, "file": comparison.file]) } catch { self.error = error.localizedDescription } } }
+    var body: some View { VStack(spacing: 0) { HStack { Text(comparison.file).font(.headline).lineLimit(1); Spacer(); Button(L("close")) { dismiss() } }.padding(); Divider(); if !error.isEmpty { Text(error).foregroundStyle(Brand.danger).padding() } else { DiffView(text: text, path: comparison.file) } }.frame(width: 850, height: 600).task { guard let root = store.repository?.root else { return }; do { text = try await store.engine.call(["method": "branchDiff", "path": root, "head": comparison.head, "base": comparison.base, "file": comparison.file]) } catch { self.error = error.localizedDescription } } }
 }
 
 struct RenameBranchSheet: View {

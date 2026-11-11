@@ -156,8 +156,8 @@ private struct QuickCommitView: View {
                 .frame(height: 74).background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
                 .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(focused ? Brand.green.opacity(0.7) : .white.opacity(0.1)))
             }
-            if onPrimary { Label(L("quickPrimaryWarning"), systemImage: "exclamationmark.triangle.fill").font(.system(size: 10.5)).foregroundStyle(.orange) }
-            if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").font(.system(size: 11)).foregroundStyle(.red).lineLimit(3) }
+            if onPrimary { Label(L("quickPrimaryWarning"), systemImage: "exclamationmark.triangle.fill").font(.system(size: 10.5)).foregroundStyle(Brand.warning) }
+            if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").font(.system(size: 11)).foregroundStyle(Brand.danger).lineLimit(3) }
             Spacer(minLength: 0)
             HStack {
                 Button(L("cancel")) { close() }.keyboardShortcut(.cancelAction)
@@ -194,15 +194,15 @@ private struct QuickConfirmView: View {
     @State private var working = false
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            QuickHeader(icon: icon, title: operation.title, subtitle: "\(store.repository?.name ?? "") · \(store.repository?.branch ?? "")", tint: operation.destructive ? .orange : Brand.green)
+            QuickHeader(icon: icon, title: operation.title, subtitle: "\(store.repository?.name ?? "") · \(store.repository?.branch ?? "")", tint: operation.destructive ? Brand.warning : Brand.green)
             Text(operation.preview).font(.system(size: 12, design: .monospaced)).textSelection(.enabled).padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
-            if let detail = operation.detail { Text(detail).font(.system(size: 11.5)).foregroundStyle(operation.destructive ? .orange : .secondary).fixedSize(horizontal: false, vertical: true) }
+            if let detail = operation.detail { Text(detail).font(.system(size: 11.5)).foregroundStyle(operation.destructive ? Brand.warning : .secondary).fixedSize(horizontal: false, vertical: true) }
             Spacer(minLength: 0)
             HStack {
                 Button(L("cancel")) { close() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 if working { Spinner(size: 14) }
-                Button(operation.title) { Task { await run() } }.buttonStyle(.borderedProminent).tint(operation.destructive ? .orange : Brand.green).keyboardShortcut(operation.action == "push" ? nil : .defaultAction).disabled(working).accessibilityIdentifier("quick.confirm")
+                Button(operation.title) { Task { await run() } }.buttonStyle(.borderedProminent).tint(operation.destructive ? Brand.warning : Brand.green).keyboardShortcut(operation.action == "push" ? nil : .defaultAction).disabled(working).accessibilityIdentifier("quick.confirm")
             }.controlSize(.large)
         }
     }

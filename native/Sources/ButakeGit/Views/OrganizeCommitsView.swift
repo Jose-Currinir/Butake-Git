@@ -82,7 +82,7 @@ struct OrganizeCommitsView: View {
                     .onMove { from, to in withAnimation(.snappy) { items.move(fromOffsets: from, toOffset: to) } }
                 }
                 .listStyle(.inset)
-                if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange).padding(10).textSelection(.enabled) }
+                if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Brand.warning).padding(10).textSelection(.enabled) }
                 }
                 .frame(minWidth: 420, idealWidth: 480, maxWidth: 560)
                 Divider()
@@ -212,7 +212,7 @@ private struct OrganizeRow: View {
                 Text(item.subject.isEmpty ? L("noMessage") : item.subject).font(.system(size: 12, weight: .medium)).lineLimit(1)
                     .strikethrough(item.drop).foregroundStyle(item.drop ? .secondary : .primary)
                 if item.changedMessage && !item.drop && item.commits.count == 1 { Image(systemName: "pencil.circle.fill").foregroundStyle(Brand.accent).help(L("messageChanged")) }
-                if item.drop { Text(L("willRemove")).font(.system(size: 9, weight: .bold)).foregroundStyle(.red).padding(.horizontal, 6).padding(.vertical, 2).background(.red.opacity(0.12), in: Capsule()) }
+                if item.drop { Text(L("willRemove")).font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.danger).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.danger.opacity(0.12), in: Capsule()) }
                 Spacer()
                 Text(item.commits.map(\.shortHash).joined(separator: " + ")).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
                 Button(action: onEdit) { Image(systemName: editing ? "chevron.up" : "pencil") }.buttonStyle(.borderless).help(L("editMessage")).accessibilityLabel(L("editMessage"))

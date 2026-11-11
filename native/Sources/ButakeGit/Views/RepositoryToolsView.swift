@@ -10,7 +10,7 @@ struct ToolEntry: Identifiable, Hashable {
     var isCurrent = false
 }
 enum ToolTint: Hashable { case accent, blue, orange, purple, red, secondary
-    var color: Color { switch self { case .accent: Brand.accent; case .blue: .blue; case .orange: .orange; case .purple: .purple; case .red: .red; case .secondary: .secondary } }
+    var color: Color { switch self { case .accent: Brand.accent; case .blue: Brand.info; case .orange: Brand.warning; case .purple: Brand.special; case .red: Brand.danger; case .secondary: .secondary } }
 }
 struct ToolForm: Identifiable { var id = UUID(); var kind: String; var title: String; var command: String }
 struct RepositoryToolsView: View {

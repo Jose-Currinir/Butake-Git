@@ -12,7 +12,7 @@ struct ConflictResolutionView: View {
     var unresolved: Bool { result.components(separatedBy: "\n").contains { $0.hasPrefix("<<<<<<< ") || $0.hasPrefix("=======") || $0.hasPrefix(">>>>>>> ") } }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { Label(L("resolveConflictTitle"), systemImage: "arrow.triangle.merge").font(.title2.weight(.semibold)); Spacer(); if remaining > 1 { Text(String(format: L("conflictsPending"), remaining)).font(.caption).foregroundStyle(.orange) }; Text(file.path).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1) }
+            HStack { Label(L("resolveConflictTitle"), systemImage: "arrow.triangle.merge").font(.title2.weight(.semibold)); Spacer(); if remaining > 1 { Text(String(format: L("conflictsPending"), remaining)).font(.caption).foregroundStyle(Brand.warning) }; Text(file.path).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1) }
             Text(L("conflictHelp")).font(.caption).foregroundStyle(.secondary)
             if let versions {
                 HSplitView {
@@ -20,10 +20,10 @@ struct ConflictResolutionView: View {
                     ConflictPane(title: L(rebasing ? "theirsRebase" : "theirs"), content: versions.theirs) { withAnimation(.snappy) { result = versions.theirs } }
                 }.frame(height: 190)
                 DisclosureGroup(L("conflictBase")) { ScrollView { Text(versions.base).font(.system(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 100) }.font(.caption)
-                HStack { Text(L("result")).font(.headline); Spacer(); Button(L("useBoth")) { result = versions.ours.hasSuffix("\n") || versions.ours.isEmpty ? versions.ours + versions.theirs : versions.ours + "\n" + versions.theirs }.controlSize(.small).accessibilityIdentifier("conflict.useBoth"); if unresolved { Label(L("remainingMarkers"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) } }
+                HStack { Text(L("result")).font(.headline); Spacer(); Button(L("useBoth")) { result = versions.ours.hasSuffix("\n") || versions.ours.isEmpty ? versions.ours + versions.theirs : versions.ours + "\n" + versions.theirs }.controlSize(.small).accessibilityIdentifier("conflict.useBoth"); if unresolved { Label(L("remainingMarkers"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(Brand.warning) } }
                 TextEditor(text: $result).font(.system(size: 12, design: .monospaced)).frame(minHeight: 180).border(.quaternary).accessibilityLabel(L("result"))
             } else { Spinner(size: 18).frame(maxWidth: .infinity, minHeight: 200) }
-            if !error.isEmpty { Text(error).foregroundStyle(.red).font(.caption).textSelection(.enabled) }
+            if !error.isEmpty { Text(error).foregroundStyle(Brand.danger).font(.caption).textSelection(.enabled) }
             HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }; Button(L("saveResolution")) { Task { await save() } }.accessibilityIdentifier("conflict.save").buttonStyle(.borderedProminent).disabled(versions == nil || unresolved || saving) }
         }.padding(24).frame(width: 920, height: 680).task { await load() }
     }

@@ -1,5 +1,13 @@
 # Cambios
 
+## 1.0.7 · 2026-11-11
+
+- **Temas:** Butake Git y Drácula en claro y oscuro (o según el sistema), aplicados a toda la app: acento,
+  fondos, tipos de cambio, diff, resaltado de código y grafo. Personalizador con vista previa en Ajustes.
+- Seleccionar un commit con miles de archivos ya no congela ni cierra la app: el detalle los muestra por páginas.
+- Los filtros del Historial se aplican al instante (animar miles de filas congelaba la app).
+- Hoja de actualización más grande y legible.
+
 ## 1.0.6 · 2026-11-11
 
 - **Búsqueda con filtros en el Historial:** `@autor:`, `@archivo:` y `@ext:` (y sus nombres en inglés), con

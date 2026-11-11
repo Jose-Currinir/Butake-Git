@@ -11,3 +11,6 @@ Incluye o usa obras de terceros con sus propias licencias:
 - Íconos de archivo de Material Icon Theme (native/Sources/ButakeGit/FileIcons/), Licencia MIT.
 - SwiftTerm (dependencia de Swift Package Manager), Licencia MIT.
 - Crates de Rust declarados en engine/Cargo.toml, con sus licencias (MIT o Apache 2.0).
+
+Los temas «Drácula» usan la paleta de colores de Dracula Theme (https://draculatheme.com),
+Copyright (c) 2016 Dracula Theme, publicada bajo la licencia MIT.

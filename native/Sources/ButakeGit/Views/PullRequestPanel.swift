@@ -26,7 +26,7 @@ struct PullRequestDetail: View {
         VStack(spacing: 0) {
             PRHeader(pr: pr, repo: repo, reviews: reviews, checks: checks, totals: totals, tab: $tab, busy: busy) { pendingAction = $0 }
             Divider()
-            if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red).textSelection(.enabled).padding(.horizontal, 20).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading).background(.red.opacity(0.06)) }
+            if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Brand.danger).textSelection(.enabled).padding(.horizontal, 20).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading).background(Brand.danger.opacity(0.06)) }
             switch tab {
             case .overview: overview
             case .changes: PRChangesView(store: store, pr: pr, files: files, note: filesNote) { Task { await loadFiles() } }
@@ -152,7 +152,7 @@ private struct PRHeader: View {
     @ViewBuilder private var reviewBadge: some View {
         let changes = reviews.contains { $0.verdict == .changesRequested }
         let approved = reviews.contains { $0.verdict == .approved }
-        let (title, icon, color): (String, String, Color) = changes ? (L("prChangesRequested"), "exclamationmark.circle.fill", .orange) : approved ? (L("prApprovedBadge"), "checkmark.circle.fill", Brand.accent) : (L("prReviewRequired"), "exclamationmark.circle", .orange)
+        let (title, icon, color): (String, String, Color) = changes ? (L("prChangesRequested"), "exclamationmark.circle.fill", Brand.warning) : approved ? (L("prApprovedBadge"), "checkmark.circle.fill", Brand.accent) : (L("prReviewRequired"), "exclamationmark.circle", Brand.warning)
         if pr.state == .open {
             Label(title, systemImage: icon).font(.system(size: 11, weight: .medium)).foregroundStyle(color)
                 .padding(.horizontal, 9).padding(.vertical, 4).overlay(Capsule().strokeBorder(color.opacity(0.45)))
@@ -185,8 +185,8 @@ struct PRStateChip: View {
         if draft { return (L("prDraft"), "pencil.circle", .secondary) }
         switch state {
         case .open: return (L("prStateOpen"), "arrow.triangle.pull", Brand.accent)
-        case .merged: return (L("prStateMerged"), "arrow.triangle.merge", .purple)
-        case .closed: return (L("prStateClosed"), "xmark.circle", .red)
+        case .merged: return (L("prStateMerged"), "arrow.triangle.merge", Brand.special)
+        case .closed: return (L("prStateClosed"), "xmark.circle", Brand.danger)
         }
     }
 }
@@ -194,8 +194,8 @@ struct PRStateChip: View {
 private struct BranchChip: View {
     let name: String
     var body: some View {
-        Text(name).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.blue)
-            .padding(.horizontal, 6).padding(.vertical, 2).background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 5)).lineLimit(1).truncationMode(.middle)
+        Text(name).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Brand.info)
+            .padding(.horizontal, 6).padding(.vertical, 2).background(Brand.info.opacity(0.1), in: RoundedRectangle(cornerRadius: 5)).lineLimit(1).truncationMode(.middle)
             .textSelection(.enabled)
     }
 }
@@ -218,8 +218,8 @@ private struct ChecksCard: View {
     let checks: [HostedCheck]; let loading: Bool; let merged: Bool
     @State private var showAll = true
     private var groups: [(key: String, icon: String, color: Color, items: [HostedCheck])] {
-        [("prChecksFailing", "xmark.circle.fill", Color.red, checks.filter { $0.state == .failure }),
-         ("prChecksRunning", "clock.fill", Color.orange, checks.filter { $0.state == .pending }),
+        [("prChecksFailing", "xmark.circle.fill", Brand.danger, checks.filter { $0.state == .failure }),
+         ("prChecksRunning", "clock.fill", Brand.warning, checks.filter { $0.state == .pending }),
          ("prChecksPassed", "checkmark.circle.fill", Brand.accent, checks.filter { $0.state == .success }),
          ("prChecksSkipped", "minus.circle", Color.secondary, checks.filter { $0.state == .neutral })].filter { !$0.3.isEmpty }
     }
@@ -227,8 +227,8 @@ private struct ChecksCard: View {
         let failing = checks.filter { $0.state == .failure }.count, running = checks.filter { $0.state == .pending }.count, passed = checks.filter { $0.state == .success }.count
         if loading && checks.isEmpty { return (L("prChecksLoading"), "", "hourglass", .secondary) }
         if checks.isEmpty { return (L("noChecks"), L("prNoChecksDetail"), "checkmark.seal", .secondary) }
-        if failing > 0 { return (failing == 1 ? L("prChecksOneFailing") : String(format: L("prChecksSomeFailing"), failing), String(format: L("prChecksCount"), checks.count), "xmark.octagon.fill", .red) }
-        if running > 0 { return (running == 1 ? L("prChecksOneRunning") : String(format: L("prChecksSomeRunning"), running), String(format: L("prChecksCount"), checks.count), "clock.fill", .orange) }
+        if failing > 0 { return (failing == 1 ? L("prChecksOneFailing") : String(format: L("prChecksSomeFailing"), failing), String(format: L("prChecksCount"), checks.count), "xmark.octagon.fill", Brand.danger) }
+        if running > 0 { return (running == 1 ? L("prChecksOneRunning") : String(format: L("prChecksSomeRunning"), running), String(format: L("prChecksCount"), checks.count), "clock.fill", Brand.warning) }
         return (L("prChecksAllPassed"), String(format: L("prChecksPassedCount"), passed), "checkmark.circle.fill", Brand.accent)
     }
     var body: some View {
@@ -310,7 +310,7 @@ private struct ReviewsCard: View {
                         AuthorAvatar(name: review.author, size: 20)
                         Text(review.author).font(.system(size: 12))
                         Spacer()
-                        let (title, icon, color): (String, String, Color) = switch review.verdict { case .approved: (L("prApprovedBadge"), "checkmark.circle.fill", Brand.accent); case .changesRequested: (L("prChangesRequested"), "exclamationmark.circle.fill", .orange); case .commented: (L("prCommented"), "text.bubble", .secondary) }
+                        let (title, icon, color): (String, String, Color) = switch review.verdict { case .approved: (L("prApprovedBadge"), "checkmark.circle.fill", Brand.accent); case .changesRequested: (L("prChangesRequested"), "exclamationmark.circle.fill", Brand.warning); case .commented: (L("prCommented"), "text.bubble", .secondary) }
                         Label(title, systemImage: icon).font(.caption).foregroundStyle(color)
                     }
                 }
@@ -390,7 +390,7 @@ private struct MiniDiff: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
-                let color: Color = line.hasPrefix("+") ? Brand.accent : line.hasPrefix("-") ? .red : .clear
+                let color: Color = line.hasPrefix("+") ? Brand.accent : line.hasPrefix("-") ? Brand.danger : .clear
                 Text(line.isEmpty ? " " : String(line)).font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(line.hasPrefix("+") || line.hasPrefix("-") ? Color.primary : Color.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 1.5)
