@@ -975,7 +975,7 @@ import QuartzCore
                     reviews: [HostedReview(author: "camilarojas", verdict: .changesRequested), HostedReview(author: "diegomunoz", verdict: .approved)],
                     files: [CommitFileChange(path: "app/Services/Envios/Tarifa.php", status: "M", stats: LineStats(additions: 9, deletions: 2)), CommitFileChange(path: "tests/Unit/TarifaTest.php", status: "A", stats: LineStats(additions: 31, deletions: 0)), CommitFileChange(path: "config/tienda.json", status: "M", stats: LineStats(additions: 1, deletions: 0))])
                 let parts = String(render.dropFirst(9)).split(separator: "|").map(String.init)
-                let host = NSHostingView(rootView: PullRequestDetail(store: self, pr: pr, repo: repo, reload: {}, fixture: fixture).frame(width: 980, height: 1250).background(Color(nsColor: .windowBackgroundColor)).tint(Brand.accent))
+                let host = NSHostingView(rootView: PullRequestDetail(store: self, pr: pr, repo: repo, reload: {}, fixture: fixture).frame(width: 980, height: 1250).background(Brand.background).tint(Brand.accent))
                 host.appearance = NSAppearance(named: parts.count > 1 && parts[1] == "dark" ? .darkAqua : .aqua)
                 host.frame = NSRect(x: 0, y: 0, width: 980, height: 1250); host.layoutSubtreeIfNeeded()
                 try? await Task.sleep(for: .milliseconds(900))

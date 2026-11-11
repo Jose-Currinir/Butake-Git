@@ -47,6 +47,7 @@ p { margin: 0; }
 .requisitos { margin-top: 14px; font-size: 14px; color: var(--subtle-text); }
 .captura { margin: 0; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--butake-shadow-card); }
 @media (prefers-color-scheme: dark) { .captura { box-shadow: 0 24px 60px rgb(0 0 0 / .55); } }
+.captura picture { display: block; }
 .captura-hero { margin-top: 56px; }
 
 /* Secciones */

@@ -12,6 +12,9 @@ import { t, repo, descarga } from '../i18n/es'
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '')
 const img = (name: string) => `${base}/img/${name}`
+// Every capture has a dark twin (`<name>-oscuro.png`), shown when the visitor prefers a dark scheme.
+const oscura = (name: string) => img(name.replace('.png', '-oscuro.png'))
+const MODO_OSCURO = '(prefers-color-scheme: dark)'
 const canonical = new URL(import.meta.env.BASE_URL, Astro.site).href
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -119,7 +122,10 @@ const jsonLd = {
         <div class="vitrina vitrina-grande">
           {t.recorrido.pestanas.map((p, i) => (
             <figure class:list={['panel captura ampliable', { activo: i === 0 }]} id={`panel-${p.id}`} role="tabpanel" aria-labelledby={`tab-${p.id}`} hidden={i !== 0}>
-              <img src={img(p.imagen)} alt={`${p.titulo}: ${p.texto}`} width="1600" height="965" loading={i === 0 ? 'eager' : 'lazy'} />
+              <picture>
+                <source media={MODO_OSCURO} srcset={oscura(p.imagen)} />
+                <img src={img(p.imagen)} alt={`${p.titulo}: ${p.texto}`} width="1600" height="1006" loading={i === 0 ? 'eager' : 'lazy'} />
+              </picture>
             </figure>
           ))}
         </div>
@@ -157,7 +163,10 @@ const jsonLd = {
           </div>
           <div class="vitrina revelar revelar-tarde">
             <figure class="captura ampliable">
-              <img src={img(funcion.imagen)} alt={funcion.alt} loading="lazy" width="1600" height="965" />
+              <picture>
+                <source media={MODO_OSCURO} srcset={oscura(funcion.imagen)} />
+                <img src={img(funcion.imagen)} alt={funcion.alt} loading="lazy" width="1600" height="1006" />
+              </picture>
             </figure>
           </div>
         </article>
@@ -186,7 +195,10 @@ const jsonLd = {
         ))}
       </ul>
       <figure class="captura captura-ancha ampliable revelar">
-        <img src={img('oscuro.png')} alt="Butake Git en modo oscuro" loading="lazy" width="1600" height="965" />
+        <picture>
+          <source media={MODO_OSCURO} srcset={img('historial.png')} />
+          <img src={oscura('historial.png')} alt={t.galeria.otroModo} loading="lazy" width="1600" height="1006" />
+        </picture>
       </figure>
     </section>
 
@@ -367,7 +379,7 @@ const jsonLd = {
     document.querySelectorAll('.ampliable img').forEach((img) => {
       const i = img as HTMLImageElement
       i.tabIndex = 0; i.setAttribute('role', 'button'); i.setAttribute('aria-label', `Ampliar: ${i.alt}`)
-      const abrir = () => { visorImg.src = i.src; visorImg.alt = i.alt; visor.showModal() }
+      const abrir = () => { visorImg.src = i.currentSrc || i.src; visorImg.alt = i.alt; visor.showModal() }
       i.addEventListener('click', abrir)
       i.addEventListener('keydown', (e) => { if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') { e.preventDefault(); abrir() } })
     })
