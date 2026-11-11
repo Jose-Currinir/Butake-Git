@@ -22,18 +22,18 @@ fail() { printf '\033[31mError:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname)" = "Darwin" ] || fail "Butake Git es para macOS."
 
-if [ -n "${BUTAKE_APP:-}" ]; then APP="$BUTAKE_APP"
+if [ -n "${BUTAKE_APP:-}" ]; then APP="${BUTAKE_APP}"
 elif [ -d "/Applications/Butake Git.app" ]; then APP="/Applications/Butake Git.app"
-elif [ -d "$HOME/Applications/Butake Git.app" ]; then APP="$HOME/Applications/Butake Git.app"
+elif [ -d "${HOME}/Applications/Butake Git.app" ]; then APP="${HOME}/Applications/Butake Git.app"
 else APP="/Applications/Butake Git.app"; fi
 
-installed="$( [ -d "$APP" ] && /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Contents/Info.plist" 2>/dev/null || echo "")"
-api="$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/latest")" || fail "No se pudo consultar GitHub."
-tag="$(printf '%s' "$api" | plutil -extract tag_name raw -o - - 2>/dev/null)"
+installed="$( [ -d "${APP}" ] && /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "${APP}/Contents/Info.plist" 2>/dev/null || echo "")"
+api="$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/releases/latest")" || fail "No se pudo consultar GitHub."
+tag="$(printf '%s' "${api}" | plutil -extract tag_name raw -o - - 2>/dev/null)"
 latest="${tag#[vV]}"
-[ -n "$latest" ] || fail "No se encontró la última versión publicada."
+[ -n "${latest}" ] || fail "No se encontró la última versión publicada."
 # URL de esa versión exacta: «releases/latest/download» puede seguir sirviendo la anterior por caché.
-DOWNLOAD="https://github.com/$REPO/releases/download/$tag"
+DOWNLOAD="https://github.com/${REPO}/releases/download/${tag}"
 
 newer() { # ¿$1 es mayor que $2? (comparación numérica por partes)
   local IFS=.; local a=($1) b=($2) i
@@ -45,61 +45,61 @@ newer() { # ¿$1 es mayor que $2? (comparación numérica por partes)
   return 1
 }
 
-if [ -n "$installed" ]; then say "Instalada: $installed · Última: $latest · $APP"; else say "Butake Git no está instalada; se instalará la $latest en $APP"; fi
-if [ -n "$installed" ] && ! newer "$latest" "$installed" && [ $FORCE = 0 ]; then
+if [ -n "${installed}" ]; then say "Instalada: ${installed} · Última: ${latest} · ${APP}"; else say "Butake Git no está instalada; se instalará la ${latest} en ${APP}"; fi
+if [ -n "${installed}" ] && ! newer "${latest}" "${installed}" && [ ${FORCE} = 0 ]; then
   echo "Ya tienes la última versión. Usa --forzar para reinstalarla."; exit 0
 fi
 
 WORK="$(mktemp -d -t butake-actualizar)"
-MOUNT="$WORK/mount"
-cleanup() { hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+MOUNT="${WORK}/mount"
+cleanup() { hdiutil detach "${MOUNT}" -force >/dev/null 2>&1 || true; rm -rf "${WORK}"; }
 trap cleanup EXIT
 
-say "Descargando Butake Git $latest…"
-curl -fL --progress-bar -o "$WORK/Butake-Git.dmg" "$DOWNLOAD/Butake-Git.dmg" || fail "No se pudo descargar el instalador."
-curl -fsSL -o "$WORK/Butake-Git.dmg.sha256" "$DOWNLOAD/Butake-Git.dmg.sha256" || fail "No se pudo descargar la suma SHA-256."
+say "Descargando Butake Git ${latest}…"
+curl -fL --progress-bar -o "${WORK}/Butake-Git.dmg" "${DOWNLOAD}/Butake-Git.dmg" || fail "No se pudo descargar el instalador."
+curl -fsSL -o "${WORK}/Butake-Git.dmg.sha256" "${DOWNLOAD}/Butake-Git.dmg.sha256" || fail "No se pudo descargar la suma SHA-256."
 
 say "Verificando…"
-expected="$(awk '{print tolower($1)}' "$WORK/Butake-Git.dmg.sha256")"
-actual="$(shasum -a 256 "$WORK/Butake-Git.dmg" | awk '{print $1}')"
-[ -n "$expected" ] && [ "$expected" = "$actual" ] || fail "La descarga no coincide con la suma SHA-256 publicada. No se instaló nada."
+expected="$(awk '{print tolower($1)}' "${WORK}/Butake-Git.dmg.sha256")"
+actual="$(shasum -a 256 "${WORK}/Butake-Git.dmg" | awk '{print $1}')"
+[ -n "${expected}" ] && [ "${expected}" = "${actual}" ] || fail "La descarga no coincide con la suma SHA-256 publicada. No se instaló nada."
 echo "  ✓ Suma SHA-256"
 
-mkdir -p "$MOUNT"
-hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$MOUNT" "$WORK/Butake-Git.dmg" >/dev/null 2>&1 || fail "No se pudo abrir el instalador."
-ditto "$MOUNT/Butake Git.app" "$WORK/Butake Git.app" || fail "El instalador no contiene la app."
-got="$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$WORK/Butake Git.app/Contents/Info.plist" 2>/dev/null || echo "")"
-[ "$got" = "$latest" ] || fail "El instalador descargado es la versión $got, no la $latest. No se instaló nada; inténtalo en unos minutos."
-hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true
+mkdir -p "${MOUNT}"
+hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "${MOUNT}" "${WORK}/Butake-Git.dmg" >/dev/null 2>&1 || fail "No se pudo abrir el instalador."
+ditto "${MOUNT}/Butake Git.app" "${WORK}/Butake Git.app" || fail "El instalador no contiene la app."
+got="$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "${WORK}/Butake Git.app/Contents/Info.plist" 2>/dev/null || echo "")"
+[ "${got}" = "${latest}" ] || fail "El instalador descargado es la versión ${got}, no la ${latest}. No se instaló nada; inténtalo en unos minutos."
+hdiutil detach "${MOUNT}" -force >/dev/null 2>&1 || true
 
-codesign --verify --deep --strict "$WORK/Butake Git.app" 2>/dev/null || fail "La firma de la app no es válida. No se instaló nada."
-details="$(codesign -dv --verbose=2 "$WORK/Butake Git.app" 2>&1)"
-grep -q "TeamIdentifier=$TEAM" <<<"$details" && grep -q "Identifier=$BUNDLE" <<<"$details" || fail "La app no está firmada por Butake SpA. No se instaló nada."
-echo "  ✓ Firma Developer ID de Butake SpA ($TEAM)"
-spctl --assess --type execute "$WORK/Butake Git.app" 2>/dev/null || fail "macOS no acepta la app como notarizada. No se instaló nada."
+codesign --verify --deep --strict "${WORK}/Butake Git.app" 2>/dev/null || fail "La firma de la app no es válida. No se instaló nada."
+details="$(codesign -dv --verbose=2 "${WORK}/Butake Git.app" 2>&1)"
+grep -q "TeamIdentifier=${TEAM}" <<<"${details}" && grep -q "Identifier=${BUNDLE}" <<<"${details}" || fail "La app no está firmada por Butake SpA. No se instaló nada."
+echo "  ✓ Firma Developer ID de Butake SpA (${TEAM})"
+spctl --assess --type execute "${WORK}/Butake Git.app" 2>/dev/null || fail "macOS no acepta la app como notarizada. No se instaló nada."
 echo "  ✓ Notarizada por Apple"
 
 # Cierra la app si está abierta (primero con normalidad; si no responde, la termina).
-pid="$(pgrep -f "$APP/Contents/MacOS/ButakeGit" || true)"
-if [ -n "$pid" ]; then
+pid="$(pgrep -f "${APP}/Contents/MacOS/ButakeGit" || true)"
+if [ -n "${pid}" ]; then
   say "Cerrando Butake Git…"
-  osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || true
-  for _ in $(seq 1 20); do kill -0 $pid 2>/dev/null || break; sleep 0.5; done
-  kill -0 $pid 2>/dev/null && { kill $pid 2>/dev/null || true; sleep 1; }
+  osascript -e "tell application \"${APP}\" to quit" >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do kill -0 ${pid} 2>/dev/null || break; sleep 0.5; done
+  kill -0 ${pid} 2>/dev/null && { kill ${pid} 2>/dev/null || true; sleep 1; }
 fi
 
 say "Instalando…"
-SUDO=""; [ -w "$(dirname "$APP")" ] && { [ ! -e "$APP" ] || [ -w "$APP" ]; } || SUDO="sudo"
-[ -n "$SUDO" ] && echo "  La carpeta requiere permisos de administrador; macOS te pedirá tu contraseña."
-BACKUP="$APP.anterior"
-$SUDO rm -rf "$BACKUP"
-[ -e "$APP" ] && $SUDO mv "$APP" "$BACKUP"
-if $SUDO ditto "$WORK/Butake Git.app" "$APP"; then
-  $SUDO rm -rf "$BACKUP"
+SUDO=""; [ -w "$(dirname "${APP}")" ] && { [ ! -e "${APP}" ] || [ -w "${APP}" ]; } || SUDO="sudo"
+[ -n "${SUDO}" ] && echo "  La carpeta requiere permisos de administrador; macOS te pedirá tu contraseña."
+BACKUP="${APP}.anterior"
+${SUDO} rm -rf "${BACKUP}"
+[ -e "${APP}" ] && ${SUDO} mv "${APP}" "${BACKUP}"
+if ${SUDO} ditto "${WORK}/Butake Git.app" "${APP}"; then
+  ${SUDO} rm -rf "${BACKUP}"
 else
-  $SUDO rm -rf "$APP"; [ -e "$BACKUP" ] && $SUDO mv "$BACKUP" "$APP"
+  ${SUDO} rm -rf "${APP}"; [ -e "${BACKUP}" ] && ${SUDO} mv "${BACKUP}" "${APP}"
   fail "No se pudo copiar la app; se restauró la versión anterior."
 fi
 
-say "Listo: Butake Git $latest instalada. Desde ahora la app te avisa de las nuevas versiones."
-[ "${BUTAKE_NO_OPEN:-0}" = "1" ] || open "$APP"
+say "Listo: Butake Git ${latest} instalada. Desde ahora la app te avisa de las nuevas versiones."
+[ "${BUTAKE_NO_OPEN:-0}" = "1" ] || open "${APP}"
