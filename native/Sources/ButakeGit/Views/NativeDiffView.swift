@@ -3,7 +3,7 @@ import AppKit
 
 struct DiffView: NSViewRepresentable {
     /// Read while the parent renders, so a theme change rebuilds the colors of this AppKit view.
-    var themeSignature = Brand.theme.signature
+    var themeSignature = Brand.theme.signature ^ Int(TextScale.shared.factor * 1_000)
     static let maxLines = 20_000
     /// Very large patches stay responsive: render the first lines and say how many were omitted.
     static func capped(_ text: String) -> String {
@@ -18,11 +18,17 @@ struct DiffView: NSViewRepresentable {
     var path: String? = nil
     var onHunk: ((Int) -> Void)? = nil
     var hunkTitle: String = L("hunkStage")
+    /// Inside another scroll view (one file of a multi-file diff): as tall as its content, vertical scrolling is
+    /// left to the enclosing view and the measured height is reported through `onHeight`.
+    var embedded = false
+    var onHeight: ((CGFloat) -> Void)? = nil
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        let scroll = DiffScrollView()
+        scroll.embedded = embedded
         scroll.automaticallyAdjustsContentInsets = false; scroll.contentInsets = NSEdgeInsetsZero
         scroll.contentView.automaticallyAdjustsContentInsets = false; scroll.contentView.contentInsets = NSEdgeInsetsZero
-        scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
+        scroll.hasVerticalScroller = !embedded; scroll.hasHorizontalScroller = true
+        if embedded { scroll.verticalScrollElasticity = .none }
         scroll.autohidesScrollers = true; scroll.scrollerStyle = .overlay; scroll.borderType = .noBorder
         scroll.drawsBackground = true; scroll.backgroundColor = Brand.surfaceNS
         // macOS 14+ no longer clips by default: without this the ruler separator escapes the scroll view.
@@ -32,7 +38,7 @@ struct DiffView: NSViewRepresentable {
         editor.usesFindBar = true; editor.isIncrementalSearchingEnabled = true
         editor.font = DiffStyle.font
         // The ruler overlays the document (overlay scrollers), so the text starts past it.
-        editor.textContainerInset = NSSize(width: 104, height: 10)
+        editor.textContainerInset = NSSize(width: TextScale.points(104), height: embedded ? 6 : 10)
         editor.isHorizontallyResizable = true; editor.isVerticallyResizable = true
         editor.minSize = .zero; editor.maxSize = NSSize(width: 1_000_000, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainer?.containerSize = NSSize(width: 1_000_000, height: CGFloat.greatestFiniteMagnitude)
@@ -51,6 +57,8 @@ struct DiffView: NSViewRepresentable {
         editor.onHunk = onHunk; editor.hunkTitle = hunkTitle
         if editor.themeSignature != themeSignature {
             editor.themeSignature = themeSignature; editor.source = nil
+            // The gutter grows with the text size (⌘+ / ⌘−).
+            editor.textContainerInset.width = TextScale.points(104); scroll.verticalRulerView?.ruleThickness = TextScale.points(92)
             scroll.backgroundColor = Brand.surfaceNS; editor.backgroundColor = Brand.surfaceNS; editor.textColor = Brand.textNS
             scroll.verticalRulerView?.needsDisplay = true
         }
@@ -70,12 +78,28 @@ struct DiffView: NSViewRepresentable {
             editor.layoutManager?.ensureLayout(for: editor.textContainer!)
             if let manager = editor.layoutManager, let container = editor.textContainer {
                 let rect = manager.usedRect(for: container)
-                editor.setFrameSize(NSSize(width: width, height: max(scroll.contentSize.height, rect.height + 28)))
+                // Embedded: exactly the content, without the empty fragment after the last newline.
+                let height = embedded ? ceil(rect.height - manager.extraLineFragmentRect.height) + 2 * editor.textContainerInset.height : max(scroll.contentSize.height, rect.height + 28)
+                editor.setFrameSize(NSSize(width: width, height: height))
+                if embedded, let onHeight { DispatchQueue.main.async { onHeight(height) } }
             }
             scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView)
             DispatchQueue.main.async { scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView) }
         }
         editor.needsDisplay = true; scroll.verticalRulerView?.needsDisplay = true
+    }
+}
+/// Scroll view of a diff. Embedded in an outer scroll view it only scrolls sideways (long lines) and hands vertical
+/// wheel events to the enclosing view, so the page scrolls no matter where the pointer is.
+private final class DiffScrollView: NSScrollView {
+    var embedded = false
+    override func scrollWheel(with event: NSEvent) {
+        if embedded && abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) { nextResponder?.scrollWheel(with: event) } else { super.scrollWheel(with: event) }
+    }
+    /// The text never ends up narrower than the visible area, so row tints reach the right edge.
+    override func tile() {
+        super.tile()
+        if let document = documentView, document.frame.width < contentSize.width { document.setFrameSize(NSSize(width: contentSize.width, height: document.frame.height)) }
     }
 }
 /// `lineRanges` are contiguous and sorted, so the line for a character is found in O(log n).
@@ -107,8 +131,10 @@ private final class DiffTextView: NSTextView {
         layoutManager.enumerateLineFragments(forGlyphRange: range) { [self] lineRect, _, _, glyphs, _ in
             let character = layoutManager.characterIndexForGlyph(at: glyphs.location)
             guard let index = lineIndex(for: character, in: self.lineRanges), index < displayLines.count else { return }
-            guard let color = DiffStyle.background(displayLines[index].kind) else { return }
-            color.setFill(); NSRect(x: 0, y: lineRect.minY + textContainerInset.height, width: bounds.width, height: lineRect.height).fill()
+            guard let color = DiffStyle.background(displayLines[index]) else { return }
+            let row = NSRect(x: 0, y: lineRect.minY + textContainerInset.height, width: bounds.width, height: lineRect.height)
+            color.setFill(); row.fill()
+            if displayLines[index].fileHeader { NSColor.separatorColor.setFill(); NSRect(x: 0, y: row.minY, width: row.width, height: 1).fill() }
         }
         let visibleCharacters = layoutManager.characterRange(forGlyphRange: range, actualGlyphRange: nil)
         for (word, kind) in wordRanges where NSIntersectionRange(word, visibleCharacters).length > 0 {
@@ -138,7 +164,7 @@ private final class DiffTextView: NSTextView {
 private final class DiffLineRuler: NSRulerView {
     override var isFlipped: Bool { true }
     override var wantsDefaultClipping: Bool { true }
-    override init(scrollView: NSScrollView?, orientation: NSRulerView.Orientation) { super.init(scrollView: scrollView, orientation: orientation); ruleThickness = 92 }
+    override init(scrollView: NSScrollView?, orientation: NSRulerView.Orientation) { super.init(scrollView: scrollView, orientation: orientation); ruleThickness = TextScale.points(92) }
     required init(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
     override func drawHashMarksAndLabels(in rect: NSRect) {
         NSGraphicsContext.saveGraphicsState()
@@ -148,22 +174,23 @@ private final class DiffLineRuler: NSRulerView {
         guard let editor = clientView as? DiffTextView, let manager = editor.layoutManager, let container = editor.textContainer else { return }
         let range = manager.glyphRange(forBoundingRect: editor.visibleRect, in: container)
         let style = NSMutableParagraphStyle(); style.alignment = .right
-        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: NSColor.tertiaryLabelColor, .paragraphStyle: style]
-        let markerFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: TextScale.points(10.5), weight: .regular), .foregroundColor: NSColor.tertiaryLabelColor, .paragraphStyle: style]
+        let markerFont = NSFont.monospacedSystemFont(ofSize: TextScale.points(11), weight: .semibold)
         manager.enumerateLineFragments(forGlyphRange: range) { [self] lineRect, _, _, glyphs, _ in
             let character = manager.characterIndexForGlyph(at: glyphs.location)
             guard let index = lineIndex(for: character, in: editor.lineRanges), index < editor.displayLines.count else { return }
             let line = editor.displayLines[index]
             let point = convert(NSPoint(x: 0, y: lineRect.minY + editor.textContainerInset.height), from: editor)
             let row = NSRect(x: 0, y: point.y, width: bounds.width, height: lineRect.height)
-            if let tint = DiffStyle.background(line.kind) { tint.setFill(); row.fill() }
+            if let tint = DiffStyle.background(line) { tint.setFill(); row.fill() }
+            if line.fileHeader { NSColor.separatorColor.setFill(); NSRect(x: 0, y: row.minY, width: row.width, height: 1).fill() }
             if line.kind == .addition || line.kind == .deletion {
                 (line.kind == .addition ? DiffStyle.addition : DiffStyle.deletion).setFill(); NSRect(x: 0, y: row.minY, width: 3, height: row.height).fill()
                 let marker = line.kind == .addition ? "+" : "−"
-                (marker as NSString).draw(at: NSPoint(x: bounds.width - 18, y: row.minY + 2), withAttributes: [.font: markerFont, .foregroundColor: line.kind == .addition ? DiffStyle.addition : DiffStyle.deletion])
+                (marker as NSString).draw(at: NSPoint(x: bounds.width - TextScale.points(18), y: row.minY + 2), withAttributes: [.font: markerFont, .foregroundColor: line.kind == .addition ? DiffStyle.addition : DiffStyle.deletion])
             }
-            if let old = line.oldLine { (String(old) as NSString).draw(in: NSRect(x: 4, y: row.minY + 2.5, width: 30, height: row.height), withAttributes: attributes) }
-            if let new = line.newLine { (String(new) as NSString).draw(in: NSRect(x: 38, y: row.minY + 2.5, width: 30, height: row.height), withAttributes: attributes) }
+            if let old = line.oldLine { (String(old) as NSString).draw(in: NSRect(x: 4, y: row.minY + 2.5, width: TextScale.points(30), height: row.height), withAttributes: attributes) }
+            if let new = line.newLine { (String(new) as NSString).draw(in: NSRect(x: TextScale.points(38), y: row.minY + 2.5, width: TextScale.points(30), height: row.height), withAttributes: attributes) }
         }
         let visible = rect.intersection(bounds)
         NSColor.separatorColor.setFill(); NSRect(x: bounds.maxX - 1, y: visible.minY, width: 1, height: visible.height).fill()
@@ -174,17 +201,17 @@ struct FileInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack { Text(L("fileDetails")).font(.headline); Spacer(); InspectorCloseButton(store: store) }
+                HStack { Text(L("fileDetails")).font(.uiHeadline); Spacer(); InspectorCloseButton(store: store) }
                 if let file = store.selectedFile {
                     HStack(alignment: .top, spacing: 10) {
                         FileTypeIcon(path: file.path, size: 26)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(file.name).font(.title3.weight(.semibold)).lineLimit(2)
-                            if !file.directory.isEmpty { Text(file.directory).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                            Text(file.name).font(.uiTitle3.weight(.semibold)).lineLimit(2)
+                            if !file.directory.isEmpty { Text(file.directory).font(.uiCaption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
                             ChangeKindBadge(kind: file.kind).padding(.top, 2)
                         }
                     }
-                    if let original = file.originalPath { Label(String(format: L("movedFrom"), original), systemImage: "arrow.right").font(.caption).foregroundStyle(Brand.special).lineLimit(2) }
+                    if let original = file.originalPath { Label(String(format: L("movedFrom"), original), systemImage: "arrow.right").font(.uiCaption).foregroundStyle(Brand.special).lineLimit(2) }
                     Divider()
                     stateRow(L("staged"), active: file.index != " " && file.index != "?", stats: store.stats(for: file, staged: true))
                     stateRow(L("unstaged"), active: file.worktree != " " || file.index == "?", stats: store.stats(for: file, staged: false))
@@ -200,15 +227,15 @@ struct FileInspector: View {
                                 .disabled(!store.canWrite || store.busy).accessibilityIdentifier("inspector.discard")
                         }
                     }.controlSize(.regular)
-                    Text(L("diffContextMenu")).font(.caption2).foregroundStyle(.tertiary)
-                } else { Text(L("chooseFile")).foregroundStyle(.secondary).font(.caption) }
+                    Text(L("diffContextMenu")).font(.uiCaption2).foregroundStyle(.tertiary)
+                } else { Text(L("chooseFile")).foregroundStyle(.secondary).font(.uiCaption) }
             }.padding(20)
         }.background(Brand.surface)
     }
     private func stateRow(_ title: String, active: Bool, stats: LineStats?) -> some View {
         HStack {
-            Image(systemName: active ? "circle.inset.filled" : "circle").font(.system(size: 9)).foregroundStyle(active ? Brand.accent : Color.secondary.opacity(0.5))
-            Text(title).font(.callout)
+            Image(systemName: active ? "circle.inset.filled" : "circle").font(.ui(size: 9)).foregroundStyle(active ? Brand.accent : Color.secondary.opacity(0.5))
+            Text(title).font(.uiCallout)
             Spacer()
             if active, let stats { StatsBadge(stats: stats) } else if !active { Text("—").foregroundStyle(.tertiary) }
         }
@@ -216,12 +243,16 @@ struct FileInspector: View {
 }
 
 enum DiffStyle {
-    static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    static var font: NSFont { NSFont.monospacedSystemFont(ofSize: TextScale.points(12), weight: .regular) }
     // From the active theme; DiffView re-renders when its signature changes.
     static var addition: NSColor { Brand.theme.addition.ns }
     static var deletion: NSColor { Brand.theme.deletion.ns }
     static var addedWord: NSColor { addition.withAlphaComponent(Brand.theme.isDark ? 0.34 : 0.28) }
     static var removedWord: NSColor { deletion.withAlphaComponent(0.28) }
+    /// File headers of a multi-file diff stand out more than the rest of the metadata.
+    static func background(_ line: DiffDisplayLine) -> NSColor? {
+        line.fileHeader ? NSColor.labelColor.withAlphaComponent(Brand.theme.isDark ? 0.14 : 0.09) : background(line.kind)
+    }
     static func background(_ kind: DiffDisplayLine.Kind) -> NSColor? {
         let dark = Brand.theme.isDark
         switch kind {
@@ -261,14 +292,14 @@ enum DiffRenderer {
                 if !body.isEmpty && (line.kind != .context || line.oldLine != nil) { body.removeFirst() }
             case .hunk:
                 attributes[.foregroundColor] = NSColor.secondaryLabelColor
-                attributes[.font] = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+                attributes[.font] = NSFont.monospacedSystemFont(ofSize: TextScale.points(11), weight: .medium)
             case .annotation:
                 body = friendly(body); attributes[.foregroundColor] = NSColor.secondaryLabelColor
-                attributes[.font] = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+                attributes[.font] = NSFont.systemFont(ofSize: TextScale.points(11.5), weight: .medium)
             case .metadata:
-                attributes[.font] = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+                attributes[.font] = NSFont.systemFont(ofSize: TextScale.points(12.5), weight: .semibold)
                 // Multi-file output ("▸ path"): switch language per file.
-                if body.hasPrefix("▸ ") { highlighter = SyntaxHighlighter(language: CodeLanguage.of(String(body.dropFirst(2)))); blockOld = false; blockNew = false }
+                if line.fileHeader { highlighter = SyntaxHighlighter(language: CodeLanguage.of(String(body.dropFirst(2)))); blockOld = false; blockNew = false }
             }
             let start = result.length
             result.append(NSAttributedString(string: body + "\n", attributes: attributes))

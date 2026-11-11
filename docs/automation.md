@@ -21,20 +21,29 @@ Butake Git debe poder manejarse por completo mediante Accesibilidad de macOS (AX
 | Editor de archivo | `editor.content` |
 | Historial | `commit.<hash7>`, `history.loadMore` |
 | Inspector de commit | `inspector.close`, `inspector.copyHashIcon`, `inspector.copyHash`, `inspector.branchHere`, `inspector.revert`, `inspector.cherryPick`, `inspector.compare`, `inspector.viewCommit`, `inspector.parent.<hash7>` |
-| Cambios | `file.unstaged.<ruta>`, `file.staged.<ruta>`, `changes.stageAll`, `changes.unstageAll`, `commit.type`, `commit.message`, `commit.amend`, `commit.submit`, `inspector.toggleStage`, `inspector.copyPath`, `inspector.reveal`, `inspector.discard` |
+| Cambios | `file.unstaged.<ruta>`, `file.staged.<ruta>`, `changes.stageAll`, `changes.unstageAll`, `changes.toggleUnstaged`, `changes.toggleStaged` (contraer o expandir cada panel), `commit.type`, `commit.message`, `commit.amend`, `commit.submit`, `inspector.toggleStage`, `inspector.copyPath`, `inspector.reveal`, `inspector.discard` |
 | Conflictos | `conflicts.resolveNext`, `conflict.<ruta>`, `conflict.useBoth`, `conflict.save`, `banner.resolve`, `banner.continue`, `banner.skip`, `banner.abort` |
 | Bajar cambios | `pull.sync`, `pull.branches` (main protegida y divergente), `pull.merge`, `pull.rebase`, `pull.autostash`, `pull.goCommit`, `pull.resolve`, `pull.abort`, `pull.push`, `pull.retry`, `pull.close` |
 | Confirmación | `confirm.preview`, `confirm.cancel`, `confirm.execute` |
-| Diff nativo | `diff.content`, `diff.copy`, `diff.openEditor`, `diff.close` |
-| Sincronizar ramas | `route.sync`, `sync.left`, `sync.right`, `sync.swap`, `sync.selectAll.<rama>`, `sync.commit.<hash7>`, `sync.copyTo.<rama>` |
+| Diff nativo | `diff.content`, `diff.copy`, `diff.openEditor`, `diff.close`; con varios archivos: `diff.expandAll` / `diff.collapseAll` (el mismo botón, según el estado) y `diff.file.<ruta>` (cabecera de cada archivo: expandir o contraer; su valor AX dice si está expandido) |
+| Sincronizar ramas | `route.sync`, `sync.left`, `sync.right` (ramas locales y remotas), `sync.swap`, `sync.refresh` (volver a consultar el remoto), `sync.stale.<rama>` (aviso de rama local atrasada), `sync.selectAll.<rama>`, `sync.commit.<hash7>`, `sync.copyTo.<rama>` |
 | Barra de estado | `status.mainProtection`, `status.checkRemoteProtection` |
 | Ramas | `branches.switch` |
 | Listas de herramientas | `<sección>.<id>` (p. ej. `tags.v1.0`, `stash.stash@{0}`, `reflog.HEAD@{3}`, `remotes.origin`), `pr.viewRemotes` |
-| Revisar cambios | `route.review`, `review.next`, `review.hideReviewed`, `review.stage`, `review.markNext`, `review.node.<ruta>` (acciones AX: marcar revisado, preparar) |
 | Pull requests | `pr.<número>`, `pr.new`, `pr.approve`, `pr.merge`, `pr.tab.overview`, `pr.tab.changes`, `pr.toggleChecks`, `pr.comment.agent.<id>`, `pr.commentText`, `pr.sendComment`, `pr.viewRemotes` |
 | Ajustes | `settings.notch` (mostrar u ocultar el notch) |
+| Tamaño del texto | Menú Visualización: «Aumentar tamaño del texto» (⌘+), «Reducir tamaño del texto» (⌘−), «Tamaño real del texto» (⌘0) |
+| Bloques del diff | `diff.hunks` (menú) y `diff.hunk.<n>`: preparar o retirar un bloque sin clic derecho |
+| Árbol de Cambios (Carpetas) | `tree.<ruta>`: acción AX por omisión (abrir carpeta o elegir archivo) y acción «Preparar archivo» / «Retirar del índice»; el valor AX dice si está preparado o contraído |
+| Ramas (vista) | `branches.newBranch`, `branches.findBranch`, `branches.compareBase`, `branches.refresh`, `branches.switch`, `branches.branchActions` (`branches.merge`, `branches.rebase`, `branches.rename`, `branches.delete`), `branches.branchDisplay` |
+| Herramientas (worktrees, etiquetas, stash, remotos, reflog) | `tools.refresh`, `tools.newWorktree`, `tools.newTag`, `tools.newRemote`, `tools.stashSave`, y por fila `tools.open`, `tools.openFinder`, `tools.delete`, `tools.stashApply`, `tools.stashPop`, `tools.stashDrop`, `tools.diff`, `tools.viewChanges`, `tools.fetch`; formulario: `tools.name`, `tools.remoteURL`, `tools.path`, `tools.create`, `tools.cancel` |
+| Archivos | `files.findFile`, `files.refresh`, `files.editorDisplay`, `files.saveFile`, `files.reloadFile`, `files.close` |
+| Consola Git | `console.command`, `console.execute`, `console.stop` |
+| Diccionario | `dictionary.dictionary` (comandos o conceptos), `dictionary.commands` (categoría), `dictionary.inspectConsole`, `dictionary.localHelp` |
+| Agentes | `agents.worktrees`, `agents.open.<nombre>`, `agents.confirm` |
+| Rebase visual | `rebase.rebaseBase`, `rebase.loadPlan`, `rebase.step.<n>.action`, `rebase.step.<n>.moveUp`, `rebase.step.<n>.moveDown`, `rebase.applyPlan`, `rebase.cancel` |
 | Notch | `notch.repository` (cambiar repo, ocultar notch, ajustes), `notch.branch` (cambiar/traer/crear rama), `notch.pull`, `notch.push`, `notch.commit`; panel flotante: `quick.commitMessage`, `quick.commit`, `quick.commitPush`, `quick.confirm`, `quick.branchName` |
-| Organizar commits | `organize.combine`, `organize.split`, `organize.drop`, `organize.edit`, `organize.reset`, `organize.apply`, `organize.message`, `organize.item.<hash7>`, `history.undoRewrite` |
+| Organizar commits | `organize.combine`, `organize.split`, `organize.drop`, `organize.edit`, `organize.reset`, `organize.apply`, `organize.message`, `organize.item.<hash7>` (acciones AX «Subir commit» / «Bajar commit», equivalentes a arrastrar), `history.undoRewrite` |
 
 ## Flujo «Bajar cambios»
 

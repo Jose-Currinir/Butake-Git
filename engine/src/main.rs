@@ -109,6 +109,7 @@ async fn dispatch(r: Value) -> git::Result<Value> {
         "snapshot" => Ok(json!(
             git::snapshot_with(&root, limit(&r), r["stats"].as_bool().unwrap_or(false)).await?
         )),
+        "status" => Ok(json!(git::status(&root).await?)),
         "stats" => Ok(json!(git::line_stats(&root).await)),
         "rewriteCandidates" => Ok(json!(rewrite::candidates(&root).await?)),
         "rewriteApply" => {

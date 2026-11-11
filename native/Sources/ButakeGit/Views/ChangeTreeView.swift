@@ -23,8 +23,8 @@ struct ChangeTreePane: View {
                 TreeCheckbox(state: state(of: files)) { toggle(files) }
                     .disabled(files.isEmpty || store.busy || store.terminalActive)
                     .accessibilityLabel(L(state(of: files) == .all ? "unstageAll" : "stageAll"))
-                Text(L("filesInCommit")).font(.system(size: 11, weight: .semibold))
-                Text("\(stagedCount)/\(files.count)").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
+                Text(L("filesInCommit")).font(.ui(size: 11, weight: .semibold))
+                Text("\(stagedCount)/\(files.count)").font(.ui(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
                     .padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule())
                 Spacer(minLength: 0)
                 Menu {
@@ -32,12 +32,12 @@ struct ChangeTreePane: View {
                     Button(L("collapseAll")) { withAnimation(.snappy) { collapsed = Set(rows.filter(\.node.isFolder).map(\.id)) } }
                 } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel(L("more"))
             }
-            .padding(.horizontal, 13).frame(height: 35).background(.bar)
+            .padding(.horizontal, 13).frame(height: 35).background(Brand.bar)
             Divider()
             if files.isEmpty && !store.files.isEmpty {
                 Spinner(size: 14).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if files.isEmpty {
-                VStack(spacing: 5) { Image(systemName: "checkmark").font(.system(size: 17, weight: .light)).foregroundStyle(.tertiary); Text(L("noUnstaged")).font(.caption2).foregroundStyle(.secondary) }
+                VStack(spacing: 5) { Image(systemName: "checkmark").font(.ui(size: 17, weight: .light)).foregroundStyle(.tertiary); Text(L("noUnstaged")).font(.uiCaption2).foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
@@ -137,7 +137,7 @@ private struct TreeCheckbox: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: state == .all ? "checkmark.square.fill" : state == .some ? "minus.square.fill" : "square")
-                .font(.system(size: 14))
+                .font(.ui(size: 14))
                 .foregroundStyle(state == .none ? Color.secondary : Brand.accent)
                 .contentTransition(.symbolEffect(.replace))
         }
@@ -160,7 +160,7 @@ private struct TreeRow: View {
         HStack(spacing: 7) {
             Group {
                 if node.isFolder {
-                    Button(action: onToggleFolder) { Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).rotationEffect(.degrees(collapsed ? 0 : 90)).foregroundStyle(.secondary) }
+                    Button(action: onToggleFolder) { Image(systemName: "chevron.right").font(.ui(size: 9, weight: .bold)).rotationEffect(.degrees(collapsed ? 0 : 90)).foregroundStyle(.secondary) }
                         .buttonStyle(.borderless).accessibilityLabel(L(collapsed ? "expand" : "collapse"))
                 } else { Color.clear }
             }.frame(width: 12)
@@ -172,17 +172,17 @@ private struct TreeRow: View {
                     .accessibilityLabel(L(state == .all ? "unstage" : "stage"))
             }
             if node.isFolder {
-                Image(systemName: collapsed ? "folder.fill" : "folder").foregroundStyle(.secondary).font(.system(size: 11))
-                Text(node.name).font(.system(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                Image(systemName: collapsed ? "folder.fill" : "folder").foregroundStyle(.secondary).font(.ui(size: 11))
+                Text(node.name).font(.ui(size: 12, weight: .medium)).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
-                Text("\(stagedCount)/\(node.files.count)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                Text("\(stagedCount)/\(node.files.count)").font(.ui(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             } else if let file = node.file {
                 FileTypeIcon(path: file.path, size: 15)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(node.name).font(.system(size: 12, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.middle)
+                    Text(node.name).font(.ui(size: 12, weight: selected ? .semibold : .regular)).lineLimit(1).truncationMode(.middle)
                         .strikethrough(file.kind == .deleted, color: .secondary)
                     if file.kind == .renamed, let original = file.originalPath {
-                        Text(String(format: L("movedFrom"), original)).font(.system(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head)
+                        Text(String(format: L("movedFrom"), original)).font(.ui(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head)
                     }
                 }
                 Spacer(minLength: 4)
@@ -199,6 +199,10 @@ private struct TreeRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("tree.\(node.id)")
+        // Click and double-click, as accessibility actions for assistive clients and agents.
+        .accessibilityAction { if node.isFolder { onToggleFolder() } else { onSelect() } }
+        .accessibilityAction(named: L(state == .all ? "unstage" : "stage")) { onCheck() }
+        .accessibilityValue(node.isFolder ? L(collapsed ? "collapsed" : "expanded") : L(state == .all ? "staged" : "unstaged"))
     }
 }
 

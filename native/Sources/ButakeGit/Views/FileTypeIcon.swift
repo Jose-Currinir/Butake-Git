@@ -165,10 +165,10 @@ struct FileTypeIcon: View {
                 .fill(type.color.gradient)
                 .overlay(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
             if let symbol = type.symbol {
-                Image(systemName: symbol).font(.system(size: size * 0.52, weight: .semibold)).foregroundStyle(.white)
+                Image(systemName: symbol).font(.ui(size: size * 0.52, weight: .semibold)).foregroundStyle(.white)
             } else {
                 Text(type.label)
-                    .font(.system(size: size * (type.label.count > 3 ? 0.36 : type.label.count == 3 ? 0.40 : 0.48), weight: .heavy, design: .rounded))
+                    .font(.ui(size: size * (type.label.count > 3 ? 0.36 : type.label.count == 3 ? 0.40 : 0.48), weight: .heavy, design: .rounded))
                     .tracking(-0.3).lineLimit(1).minimumScaleFactor(0.5)
                     .foregroundStyle(type.darkText ? Color.black.opacity(0.82) : .white)
                     .padding(.horizontal, size * 0.06)

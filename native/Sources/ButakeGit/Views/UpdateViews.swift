@@ -7,7 +7,7 @@ struct VersionBadge: View {
         if updates.updateAvailable, let latest = updates.latest {
             Button { updates.showingSheet = true } label: {
                 Label(String(format: L("updateAvailableShort"), latest.version), systemImage: "arrow.down.circle.fill")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Brand.accent)
+                    .font(.ui(size: 11, weight: .semibold)).foregroundStyle(Brand.accent)
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(Brand.accent.opacity(0.14), in: Capsule())
             }
@@ -16,7 +16,7 @@ struct VersionBadge: View {
             .transition(.scale.combined(with: .opacity))
         } else {
             Button { Task { await updates.check(userInitiated: true) } } label: {
-                Text("v\(updates.current)").font(.system(size: 11, weight: .medium).monospacedDigit()).foregroundStyle(.secondary)
+                Text("v\(updates.current)").font(.ui(size: 11, weight: .medium).monospacedDigit()).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain).help(L("updateCheckNow")).accessibilityLabel("\(L("version")) \(updates.current). \(L("updateCheckNow"))")
             .accessibilityIdentifier("sidebar.version")
@@ -34,23 +34,23 @@ struct UpdateSheet: View {
             HStack(spacing: 14) {
                 BrandMark(size: 46)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 17, weight: .semibold))
-                    Text(String(format: L("updateInstalled"), updates.current)).font(.callout).foregroundStyle(.secondary)
+                    Text(title).font(.ui(size: 17, weight: .semibold))
+                    Text(String(format: L("updateInstalled"), updates.current)).font(.uiCallout).foregroundStyle(.secondary)
                 }
             }
             if updates.updateAvailable, let latest = updates.latest {
                 ScrollView {
-                    Text(notes(latest.notes)).font(.system(size: 13)).lineSpacing(4).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(notes(latest.notes)).font(.ui(size: 13)).lineSpacing(4).frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled).padding(12)
                 }
                 .frame(minHeight: 160, maxHeight: 380).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
-                Label(L("updateVerification"), systemImage: "checkmark.shield").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Label(L("updateVerification"), systemImage: "checkmark.shield").font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if case .failed(let message) = updates.phase {
-                Label(message, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(Brand.warning).fixedSize(horizontal: false, vertical: true)
+                Label(message, systemImage: "exclamationmark.triangle.fill").font(.uiCallout).foregroundStyle(Brand.warning).fixedSize(horizontal: false, vertical: true)
             }
             if busy {
-                HStack(spacing: 10) { Spinner(size: 14); Text(progressText).font(.callout).foregroundStyle(.secondary) }
+                HStack(spacing: 10) { Spinner(size: 14); Text(progressText).font(.uiCallout).foregroundStyle(.secondary) }
             }
             HStack {
                 if let latest = updates.latest { Button(L("updateViewRelease")) { NSWorkspace.shared.open(latest.page) } }
@@ -116,7 +116,7 @@ struct UpdateSettingsSection: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(L("version")) \(updates.current)")
-                    if let last = updates.lastCheck { Text(String(format: L("updateLastCheck"), last.formatted(date: .abbreviated, time: .shortened))).font(.caption).foregroundStyle(.secondary) }
+                    if let last = updates.lastCheck { Text(String(format: L("updateLastCheck"), last.formatted(date: .abbreviated, time: .shortened))).font(.uiCaption).foregroundStyle(.secondary) }
                 }
                 Spacer()
                 Button(L("updateCheckNow")) { Task { await updates.check(userInitiated: true) } }

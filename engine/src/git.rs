@@ -148,8 +148,11 @@ pub async fn git(root: &Path, args: &[&str]) -> Result<String> {
         Some("rev-parse" | "symbolic-ref" | "--version" | "--exec-path" | "--list-cmds=builtins")
     ) {
         12
-    } else if args.first() == Some(&"clone") {
-        // Large repositories over slow links: clone gets half an hour.
+    } else if matches!(
+        args.first().copied(),
+        Some("clone" | "push" | "pull" | "fetch")
+    ) {
+        // Large repositories over slow links: network transfers get half an hour.
         1_800
     } else {
         120
@@ -576,6 +579,84 @@ pub fn access_failure(failure: GitError) -> GitError {
     }
 }
 
+/// Same rule as `primary_branch`, from branches that were already listed (no extra Git process).
+pub fn primary_from(local: &[Branch], remote: &[RemoteBranch]) -> String {
+    for name in ["main", "master"] {
+        if local.iter().any(|b| b.name == name)
+            || remote
+                .iter()
+                .any(|b| b.remote == "origin" && b.short == name)
+        {
+            return name.into();
+        }
+    }
+    "main".into()
+}
+
+/// Butake settings and remote names of a repository, read with a single `git config` call.
+#[derive(Default, Debug, PartialEq)]
+pub struct RepositoryConfig {
+    /// `butake.protectMain` as stored (empty when unset).
+    pub protect_main: String,
+    /// `butake.remoteProtectMain` as stored (empty when unset).
+    pub remote_protect_main: String,
+    pub remotes: Vec<String>,
+}
+
+impl RepositoryConfig {
+    /// Explicit choice first, then the provider's rule; unknown means not blocked.
+    pub fn main_protected(&self) -> bool {
+        for value in [&self.protect_main, &self.remote_protect_main] {
+            match value.trim().to_ascii_lowercase().as_str() {
+                "true" | "1" | "yes" | "on" => return true,
+                "false" | "0" | "no" | "off" => return false,
+                _ => {}
+            }
+        }
+        false
+    }
+}
+
+/// Parses `git config --get-regexp` lines (`key value`; Git prints section and variable names in
+/// lowercase and keeps the subsection, i.e. the remote name, as written). The last value of a key wins.
+pub fn parse_repository_config(raw: &str) -> RepositoryConfig {
+    let mut config = RepositoryConfig::default();
+    for line in raw.lines() {
+        let (key, value) = line.split_once(' ').unwrap_or((line, ""));
+        match key {
+            "butake.protectmain" => config.protect_main = value.trim().into(),
+            "butake.remoteprotectmain" => config.remote_protect_main = value.trim().into(),
+            _ => {
+                if let Some(name) = key
+                    .strip_prefix("remote.")
+                    .and_then(|rest| rest.strip_suffix(".url"))
+                {
+                    if !name.is_empty() && !config.remotes.iter().any(|r| r == name) {
+                        config.remotes.push(name.into());
+                    }
+                }
+            }
+        }
+    }
+    config.remotes.sort();
+    config
+}
+
+pub async fn repository_config(root: &Path) -> RepositoryConfig {
+    // Exit code 1 (no matching key) reads as an empty configuration.
+    let raw = git(
+        root,
+        &[
+            "config",
+            "--get-regexp",
+            r"^(butake\.(remote)?protectmain|remote\..+\.url)$",
+        ],
+    )
+    .await
+    .unwrap_or_default();
+    parse_repository_config(&raw)
+}
+
 /// The repository's primary branch: `main`, or `master` in repositories that still use it.
 pub async fn primary_branch(root: &Path) -> String {
     for name in ["main", "master"] {
@@ -599,17 +680,7 @@ pub async fn primary_branch(root: &Path) -> String {
 /// 2. Otherwise the hosting provider's real rule, cached by the app in `butake.remoteProtectMain`.
 /// 3. Unknown: not blocked (the app still asks for an explicit confirmation before pushing to main).
 pub async fn main_protected(root: &Path) -> bool {
-    for key in ["butake.protectMain", "butake.remoteProtectMain"] {
-        let value = git(root, &["config", "--get", key])
-            .await
-            .unwrap_or_default();
-        match value.trim().to_ascii_lowercase().as_str() {
-            "true" | "1" | "yes" | "on" => return true,
-            "false" | "0" | "no" | "off" => return false,
-            _ => {}
-        }
-    }
-    false
+    repository_config(root).await.main_protected()
 }
 
 /// Caches the provider's protection rule for `main` ("true", "false" or "unknown" to clear it).
@@ -845,6 +916,17 @@ pub fn parse_status(raw: &str) -> Vec<ChangedFile> {
     files
 }
 
+/// Changed files only: the cheap refresh for working-tree edits, which cannot move refs or history.
+pub async fn status(root: &Path) -> Result<Vec<ChangedFile>> {
+    Ok(parse_status(
+        &git(
+            root,
+            &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        )
+        .await?,
+    ))
+}
+
 pub const DEFAULT_HISTORY_LIMIT: usize = 180;
 pub const MAX_HISTORY_LIMIT: usize = 5_000;
 
@@ -894,11 +976,7 @@ pub async fn snapshot_with(root: &Path, limit: usize, with_stats: bool) -> Resul
         paths,
         remote,
         stats,
-        protected,
-        protection,
-        remote_protection,
-        primary,
-        remote_names,
+        config,
     ) = tokio::join!(
         git(
             root,
@@ -928,11 +1006,7 @@ pub async fn snapshot_with(root: &Path, limit: usize, with_stats: bool) -> Resul
                 None
             }
         },
-        main_protected(root),
-        git(root, &["config", "--get", "butake.protectMain"]),
-        git(root, &["config", "--get", "butake.remoteProtectMain"]),
-        primary_branch(root),
-        git(root, &["remote"]),
+        repository_config(root),
     );
     let files = parse_status(&status?);
     let branch = branch.unwrap_or_else(|_| "HEAD".into()).trim().to_string();
@@ -953,6 +1027,7 @@ pub async fn snapshot_with(root: &Path, limit: usize, with_stats: bool) -> Resul
         })
         .collect();
     let (branches, remote_branches) = parse_branches(&raw_branches?);
+    let primary = primary_from(&branches, &remote_branches);
     let divergence = divergence.unwrap_or_default();
     let mut counts = divergence
         .split_whitespace()
@@ -977,18 +1052,12 @@ pub async fn snapshot_with(root: &Path, limit: usize, with_stats: bool) -> Resul
         behind,
         remote: remote.unwrap_or_default().trim().to_string(),
         stats,
-        main_protected: protected,
-        main_protection: protection.unwrap_or_default().trim().to_string(),
-        main_protection_remote: remote_protection.unwrap_or_default().trim().to_string(),
+        main_protected: config.main_protected(),
+        main_protection: config.protect_main,
+        main_protection_remote: config.remote_protect_main,
         primary_branch: primary,
         remote_branches,
-        remotes: remote_names
-            .unwrap_or_default()
-            .lines()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(String::from)
-            .collect(),
+        remotes: config.remotes,
     })
 }
 
@@ -1910,6 +1979,60 @@ mod tests {
             git(remote.path(), &["show-ref", "--verify", "refs/heads/main"])
                 .await
                 .is_err()
+        );
+    }
+    #[test]
+    fn repository_config_is_parsed_from_one_listing() {
+        let config = parse_repository_config(
+            "remote.origin.url git@github.com:a/b.git\nbutake.protectmain false\nremote.Mi.Fork.url https://x/y.git\nbutake.protectmain true\nbutake.remoteprotectmain false\n",
+        );
+        assert_eq!(config.protect_main, "true");
+        assert_eq!(config.remote_protect_main, "false");
+        assert_eq!(config.remotes, ["Mi.Fork", "origin"]);
+        assert!(config.main_protected(), "explicit choice wins");
+        assert!(!parse_repository_config("").main_protected());
+    }
+    #[tokio::test]
+    async fn snapshot_reads_config_remotes_and_primary_without_extra_calls() {
+        let temp = repository().await;
+        let root = temp.path();
+        git(root, &["branch", "master"]).await.unwrap();
+        git(
+            root,
+            &["remote", "add", "origin", "https://example.invalid/a/b.git"],
+        )
+        .await
+        .unwrap();
+        git(
+            root,
+            &[
+                "remote",
+                "add",
+                "respaldo",
+                "https://example.invalid/c/d.git",
+            ],
+        )
+        .await
+        .unwrap();
+        set_remote_protection(root, "true").await.unwrap();
+        let state = snapshot(root).await.unwrap();
+        assert_eq!(state.primary_branch, "master");
+        assert_eq!(state.primary_branch, primary_branch(root).await);
+        assert_eq!(state.remotes, ["origin", "respaldo"]);
+        assert_eq!(state.remote, "https://example.invalid/a/b.git");
+        assert!(state.main_protected);
+        assert_eq!(state.main_protection, "");
+        assert_eq!(state.main_protection_remote, "true");
+        set_main_protection(root, "false").await.unwrap();
+        let state = snapshot(root).await.unwrap();
+        assert!(!state.main_protected);
+        assert_eq!(state.main_protection, "false");
+        std::fs::write(root.join("nuevo.txt"), "x\n").unwrap();
+        let files = status(root).await.unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            (files[0].path.as_str(), files[0].index.as_str()),
+            ("nuevo.txt", "?")
         );
     }
     #[test]

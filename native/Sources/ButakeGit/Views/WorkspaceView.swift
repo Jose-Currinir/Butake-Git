@@ -16,7 +16,7 @@ struct WorkspaceView: View {
                 StatusBar(store: store)
             }
             // Themes with their own palette (Drácula) paint the content; Butake Git keeps the system backgrounds.
-            .background { if Brand.customBackgrounds { Brand.surface.ignoresSafeArea() } }
+            .background { if Brand.customBackgrounds { Brand.surface.ignoresSafeArea() } }.scaledText()
             .overlay(alignment: .top) { if store.busy || store.terminalActive { ActivityBar(active: true).transition(.opacity) } }
             .overlay(alignment: .bottom) { if let toast = store.toast { ToastView(toast: toast).padding(.bottom, 42).transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.92))) } }
             .animation(.smooth(duration: 0.25), value: store.repository?.operation)
@@ -52,18 +52,18 @@ struct WorkspaceView: View {
             // overhangs the sidebar divider by ~3 pt, so the bar surface is drawn here, flush with the column.
             .overlay { if store.showInspector { ToolbarStrip().transition(.opacity) } }
         }
-        .sheet(item: $store.pending) { operation in OperationConfirmation(store: store, operation: operation) }
-        .sheet(item: $store.diffRequest) { request in QueryDiffSheet(store: store, request: request) }
-        .sheet(isPresented: $store.organizing) { OrganizeCommitsView(store: store) }
-        .sheet(item: $store.pullProblem) { problem in PullAssistantView(store: store, problem: problem) }
-        .sheet(item: $store.resolving) { file in ConflictResolutionView(store: store, file: file) }
-        .sheet(isPresented: $store.creatingBranch) { NewBranchSheet(store: store) }
-        .sheet(isPresented: $store.cloningRepository) { CloneRepositorySheet(store: store) }
-        .sheet(isPresented: $store.creatingRepository) { NewRepositorySheet(store: store) }
-        .sheet(isPresented: $store.publishingRepository) { PublishRepositorySheet(store: store) }
-        .sheet(item: Binding(get: { store.renamingBranch.map { BranchName(name: $0) } }, set: { store.renamingBranch = $0?.name })) { RenameBranchSheet(store: store, original: $0.name) }
-        .sheet(isPresented: $rebaseSheet) { RebasePlannerView(store: store) }
-        .sheet(isPresented: $updates.showingSheet) { UpdateSheet(updates: updates) }
+        .sheet(item: $store.pending) { operation in OperationConfirmation(store: store, operation: operation).themedSheet() }
+        .sheet(item: $store.diffRequest) { request in QueryDiffSheet(store: store, request: request).themedSheet() }
+        .sheet(isPresented: $store.organizing) { OrganizeCommitsView(store: store).themedSheet() }
+        .sheet(item: $store.pullProblem) { problem in PullAssistantView(store: store, problem: problem).themedSheet() }
+        .sheet(item: $store.resolving) { file in ConflictResolutionView(store: store, file: file).themedSheet() }
+        .sheet(isPresented: $store.creatingBranch) { NewBranchSheet(store: store).themedSheet() }
+        .sheet(isPresented: $store.cloningRepository) { CloneRepositorySheet(store: store).themedSheet() }
+        .sheet(isPresented: $store.creatingRepository) { NewRepositorySheet(store: store).themedSheet() }
+        .sheet(isPresented: $store.publishingRepository) { PublishRepositorySheet(store: store).themedSheet() }
+        .sheet(item: Binding(get: { store.renamingBranch.map { BranchName(name: $0) } }, set: { store.renamingBranch = $0?.name })) { RenameBranchSheet(store: store, original: $0.name).themedSheet() }
+        .sheet(isPresented: $rebaseSheet) { RebasePlannerView(store: store).themedSheet() }
+        .sheet(isPresented: $updates.showingSheet) { UpdateSheet(updates: updates).themedSheet() }
         .alert(L("operationFailed"), isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button(L("close"), role: .cancel) { store.errorMessage = nil }
         } message: { Text(store.errorMessage ?? "").textSelection(.enabled) }
@@ -88,7 +88,7 @@ private struct WorkspaceDetail: View {
         VStack(spacing: 0) {
         // Centered selector for how Changes are shown (list or review), in its own row so no header is covered.
         if store.route.isChanges && store.repository != nil {
-            WorkViewPicker(store: store).padding(.vertical, 8).frame(maxWidth: .infinity).background(.bar)
+            WorkViewPicker(store: store).padding(.vertical, 8).frame(maxWidth: .infinity).background(Brand.bar)
             Divider()
         }
         ZStack {
@@ -153,7 +153,7 @@ private struct SidebarView: View {
         VStack(spacing: 0) {
             HStack(spacing: 11) {
                 BrandMark(size: 34)
-                Text("Git").font(.system(size: 22, weight: .semibold))
+                Text("Git").font(.ui(size: 22, weight: .semibold))
                 Spacer(minLength: 0)
             }.padding(.horizontal, 20).padding(.vertical, 18)
             Menu {
@@ -163,7 +163,7 @@ private struct SidebarView: View {
                 if store.repository?.canPublish == true { Button(L("publishRepository") + "…") { store.publishingRepository = true }.accessibilityIdentifier("sidebar.publish") }
                 if !store.recent.isEmpty { Divider(); ForEach(store.recent, id: \.self) { path in Button { store.reopenRecent(path) } label: { Label(URL(fileURLWithPath: path).lastPathComponent, systemImage: path == store.repository?.root ? "checkmark" : "folder") } } }
             } label: {
-                HStack { Image(systemName: "folder.fill").foregroundStyle(Brand.accent); VStack(alignment: .leading, spacing: 1) { Text(store.repository?.name ?? L("openRepository")).lineLimit(1); if let branch = store.repository?.branch { Text(branch).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).contentTransition(.interpolate) } }; Spacer(); Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary) }
+                HStack { Image(systemName: "folder.fill").foregroundStyle(Brand.accent); VStack(alignment: .leading, spacing: 1) { Text(store.repository?.name ?? L("openRepository")).lineLimit(1); if let branch = store.repository?.branch { Text(branch).font(.ui(size: 10)).foregroundStyle(.secondary).lineLimit(1).contentTransition(.interpolate) } }; Spacer(); Image(systemName: "chevron.up.chevron.down").font(.uiCaption2).foregroundStyle(.secondary) }
                     .padding(10).background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 9))
             }.menuStyle(.borderlessButton).accessibilityIdentifier("sidebar.repository").accessibilityLabel(L("openRepository")).accessibilityValue(store.repository.map { "\($0.name), \($0.branch)" } ?? "").padding(.horizontal, 14).padding(.bottom, 10).disabled(store.busy || store.terminalActive)
             List(selection: selection) {
@@ -202,8 +202,8 @@ private struct SidebarView: View {
                         } header: { Text("\(L("remoteBranches")) · \(repo.remoteOnly.count)") }
                     }
                 }
-            }.listStyle(.sidebar).scrollContentBackground(Brand.customBackgrounds ? .hidden : .automatic).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize)
-            HStack { VersionBadge(updates: UpdateService.shared); Spacer(); SettingsLink { Image(systemName: "gearshape").font(.system(size: 13)) }.buttonStyle(.borderless).help(L("settings")) }.padding(.horizontal, 16).padding(.vertical, 10)
+            }.listStyle(.sidebar).scaledText().scrollContentBackground(Brand.customBackgrounds ? .hidden : .automatic).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize)
+            HStack { VersionBadge(updates: UpdateService.shared); Spacer(); SettingsLink { Image(systemName: "gearshape").font(.ui(size: 13)) }.buttonStyle(.borderless).help(L("settings")) }.padding(.horizontal, 16).padding(.vertical, 10)
                 .animation(.snappy, value: UpdateService.shared.updateAvailable)
         }
         .background { if Brand.customBackgrounds { (Brand.theme.sidebar?.color ?? Brand.background).ignoresSafeArea() } }
@@ -218,7 +218,7 @@ private struct WelcomeView: View {
             BrandMark(size: 90)
                 .shadow(color: Brand.green.opacity(glow ? 0.28 : 0.10), radius: glow ? 40 : 26, y: 8)
                 .scaleEffect(appeared ? 1 : 0.82).opacity(appeared ? 1 : 0)
-            VStack(spacing: 10) { Text(L("welcomeTitle")).font(.system(size: 34, weight: .semibold, design: .rounded)); Text(L("welcomeDetail")).font(.title3).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 430) }
+            VStack(spacing: 10) { Text(L("welcomeTitle")).font(.ui(size: 34, weight: .semibold, design: .rounded)); Text(L("welcomeDetail")).font(.uiTitle3).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 430) }
                 .offset(y: appeared ? 0 : 12).opacity(appeared ? 1 : 0)
             HStack(spacing: 10) {
                 Button(L("openRepository"), action: store.chooseRepository).accessibilityIdentifier("welcome.open").buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut("o")
@@ -228,7 +228,7 @@ private struct WelcomeView: View {
                 .opacity(appeared ? 1 : 0)
             if !store.recent.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(L("recent")).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.bottom, 4)
+                    Text(L("recent")).font(.uiCaption).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.bottom, 4)
                     ForEach(Array(store.recent.prefix(5).enumerated()), id: \.element) { index, path in
                         RecentRow(path: path) { store.reopenRecent(path) }
                             .offset(y: appeared ? 0 : 10).opacity(appeared ? 1 : 0)
@@ -251,11 +251,11 @@ private struct RecentRow: View {
             HStack(spacing: 10) {
                 Image(systemName: "folder.fill").foregroundStyle(Brand.accent).frame(width: 18)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(URL(fileURLWithPath: path).lastPathComponent).font(.system(size: 12, weight: .medium)).foregroundStyle(.primary)
-                    Text((path as NSString).abbreviatingWithTildeInPath).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    Text(URL(fileURLWithPath: path).lastPathComponent).font(.ui(size: 12, weight: .medium)).foregroundStyle(.primary)
+                    Text((path as NSString).abbreviatingWithTildeInPath).font(.ui(size: 10)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "arrow.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary).opacity(hovering ? 1 : 0).offset(x: hovering ? 0 : -4)
+                Image(systemName: "arrow.right").font(.uiCaption.weight(.semibold)).foregroundStyle(.secondary).opacity(hovering ? 1 : 0).offset(x: hovering ? 0 : -4)
             }.padding(.horizontal, 8).padding(.vertical, 7).contentShape(Rectangle())
             .background(hovering ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 8))
         }.buttonStyle(.plain).onHover { hover in withAnimation(.easeOut(duration: 0.15)) { hovering = hover } }
@@ -287,7 +287,7 @@ private struct StatusBar: View {
                     }.monospacedDigit().help(L("aheadBehindHelp"))
                 }
             }
-        }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 16).frame(height: 29).background(.bar)
+        }.font(.ui(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 16).frame(height: 29).background(Brand.bar)
         .animation(.snappy, value: store.busy).animation(.snappy, value: store.repository?.ahead).animation(.snappy, value: store.repository?.behind).animation(.easeOut(duration: 0.2), value: store.status)
     }
 }
@@ -299,13 +299,13 @@ struct OperationConfirmation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                Image(systemName: operation.destructive ? "exclamationmark.triangle.fill" : "arrow.triangle.branch").font(.system(size: 22, weight: .semibold)).foregroundStyle(operation.destructive ? Brand.danger : Brand.accent)
+                Image(systemName: operation.destructive ? "exclamationmark.triangle.fill" : "arrow.triangle.branch").font(.ui(size: 22, weight: .semibold)).foregroundStyle(operation.destructive ? Brand.danger : Brand.accent)
                     .frame(width: 42, height: 42).background((operation.destructive ? Brand.danger : Brand.accent).opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     .symbolEffect(.bounce, value: appeared)
-                VStack(alignment: .leading, spacing: 2) { Text(operation.destructive ? operation.title : L("confirmation")).font(.title2.weight(.semibold)); if operation.destructive { Text(L("cannotUndo")).font(.caption).foregroundStyle(Brand.danger) } }
+                VStack(alignment: .leading, spacing: 2) { Text(operation.destructive ? operation.title : L("confirmation")).font(.uiTitle2.weight(.semibold)); if operation.destructive { Text(L("cannotUndo")).font(.uiCaption).foregroundStyle(Brand.danger) } }
             }
             Text(operation.detail ?? L("confirmationDetail")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            LabeledContent(L("repository"), value: operation.root).font(.caption)
+            LabeledContent(L("repository"), value: operation.root).font(.uiCaption)
             Text(operation.preview).font(.system(.body, design: .monospaced)).textSelection(.enabled).accessibilityIdentifier("confirm.preview").frame(maxWidth: .infinity, alignment: .leading).padding(14).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
             HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("confirm.cancel"); Button(operation.destructive ? L("discard") : L("confirm"), role: operation.destructive ? .destructive : nil) { dismiss(); Task { await store.perform(operation) } }.buttonStyle(.borderedProminent).tint(operation.destructive ? Brand.danger : Brand.accent).keyboardShortcut(.defaultAction).accessibilityIdentifier("confirm.execute") }
         }.padding(26).frame(width: 540)
@@ -317,7 +317,7 @@ struct NewBranchSheet: View {
     let store: WorkspaceStore
     @State private var name = ""
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) { Text(L("newBranch")).font(.title2.weight(.semibold)); TextField(L("branchName"), text: $name).textFieldStyle(.roundedBorder); HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }; Button(L("createAndSwitch")) { store.action("create_branch", value: name); dismiss() }.buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction) } }.padding(26).frame(width: 440)
+        VStack(alignment: .leading, spacing: 20) { Text(L("newBranch")).font(.uiTitle2.weight(.semibold)); TextField(L("branchName"), text: $name).textFieldStyle(.roundedBorder); HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }; Button(L("createAndSwitch")) { store.action("create_branch", value: name); dismiss() }.buttonStyle(.borderedProminent).disabled(name.trimmingCharacters(in: .whitespaces).isEmpty).keyboardShortcut(.defaultAction) } }.padding(26).frame(width: 440)
     }
 }
 struct OperationBanner: View {
@@ -342,7 +342,7 @@ struct OperationBanner: View {
             Button(L("abortOperation"), role: .destructive) { store.abortOperation() }.accessibilityIdentifier("banner.abort")
             Button { store.inspect(operation, arguments: "--continue") } label: { Image(systemName: "terminal") }.help(L("inspectConsole")).accessibilityLabel(L("inspectConsole"))
         }
-        .font(.caption).controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8).background((conflicts > 0 ? Brand.warning : Brand.accent).opacity(0.12))
+        .font(.uiCaption).controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8).background((conflicts > 0 ? Brand.warning : Brand.accent).opacity(0.12))
         .disabled(store.busy || store.terminalActive)
         .animation(.snappy, value: conflicts)
         .onAppear { withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true } }
@@ -360,16 +360,16 @@ struct PullAssistantView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
-                Image(systemName: icon).font(.system(size: 22, weight: .semibold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.ui(size: 22, weight: .semibold)).foregroundStyle(tint)
                     .frame(width: 44, height: 44).background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
-                VStack(alignment: .leading, spacing: 2) { Text(L("pullAssistant")).font(.caption).foregroundStyle(.secondary); Text(title).font(.title3.weight(.semibold)) }
+                VStack(alignment: .leading, spacing: 2) { Text(L("pullAssistant")).font(.uiCaption).foregroundStyle(.secondary); Text(title).font(.uiTitle3.weight(.semibold)) }
             }
             Text(body_).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             VStack(spacing: 8) { options }
             if !parts.detail.isEmpty {
                 DisclosureGroup(L("gitDetail"), isExpanded: $showDetail) {
-                    Text(parts.detail).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(8).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
-                }.font(.caption)
+                    Text(parts.detail).font(.ui(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(8).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+                }.font(.uiCaption)
             }
             HStack { Spacer(); Button(L("close")) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("pull.close") }
         }.padding(24).frame(width: 520)
@@ -412,10 +412,10 @@ private struct OptionCard: View {
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(recommended ? Brand.accent : .secondary).frame(width: 22)
-                VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 13, weight: .semibold)); Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading) }
+                Image(systemName: icon).font(.ui(size: 15, weight: .semibold)).foregroundStyle(recommended ? Brand.accent : .secondary).frame(width: 22)
+                VStack(alignment: .leading, spacing: 3) { Text(title).font(.ui(size: 13, weight: .semibold)); Text(detail).font(.uiCaption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading) }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary).offset(x: hovering ? 2 : 0)
+                Image(systemName: "chevron.right").font(.uiCaption.weight(.semibold)).foregroundStyle(.tertiary).offset(x: hovering ? 2 : 0)
             }
             .padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(RoundedRectangle(cornerRadius: 10))
             .background(hovering ? Brand.accent.opacity(0.10) : Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
@@ -431,6 +431,11 @@ struct QueryDiffSheet: View {
     let store: WorkspaceStore; let request: DiffRequest
     @State private var text = ""
     @State private var loaded = false
+    /// A commit or comparison split by file, each one a collapsible card; empty for a single file or plain text.
+    @State private var sections: [DiffSection] = []
+    @State private var collapsed: Set<Int> = []
+    private var fileSections: [DiffSection] { sections.filter { $0.file != nil } }
+    private func toggle(_ section: Int) { withAnimation(.snappy(duration: 0.2)) { if collapsed.contains(section) { collapsed.remove(section) } else { collapsed.insert(section) } } }
     var stats: LineStats {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         return LineStats(additions: lines.filter { $0.hasPrefix("+") && !$0.hasPrefix("+++") }.count, deletions: lines.filter { $0.hasPrefix("-") && !$0.hasPrefix("---") }.count)
@@ -452,35 +457,50 @@ struct QueryDiffSheet: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 if isFile { FileTypeIcon(path: request.title, size: 30) }
-                else { Image(systemName: "plus.forwardslash.minus").foregroundStyle(Brand.accent).font(.system(size: 17, weight: .semibold)).frame(width: 30) }
+                else { Image(systemName: "plus.forwardslash.minus").foregroundStyle(Brand.accent).font(.ui(size: 17, weight: .semibold)).frame(width: 30) }
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
-                        Text(isFile ? (request.title as NSString).lastPathComponent : request.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                        Text(isFile ? (request.title as NSString).lastPathComponent : request.title).font(.ui(size: 14, weight: .semibold)).lineLimit(1)
                         if loaded, isFile, let kind { ChangeKindBadge(kind: kind) }
                     }
                     HStack(spacing: 6) {
                         if isFile, case let folder = (request.title as NSString).deletingLastPathComponent, !folder.isEmpty { Label(folder, systemImage: "folder").labelStyle(.titleAndIcon) }
                         if !request.subtitle.isEmpty { Text(request.subtitle).lineLimit(1).truncationMode(.middle) }
-                    }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }.font(.uiCaption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 12)
                 if loaded { StatsBadge(stats: stats).scaleEffect(1.15).transition(.opacity) }
+                if case let files = fileSections, files.count > 1 {
+                    let allCollapsed = collapsed.count == files.count
+                    Button { withAnimation(.snappy(duration: 0.2)) { collapsed = allCollapsed ? [] : Set(files.map(\.id)) } } label: {
+                        Label(L(allCollapsed ? "expandAll" : "collapseAll"), systemImage: allCollapsed ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+                    }.accessibilityIdentifier(allCollapsed ? "diff.expandAll" : "diff.collapseAll")
+                }
                 ControlGroup {
                     Button { store.copyToPasteboard(text) } label: { Image(systemName: "doc.on.doc") }.help(L("copyDiff")).accessibilityLabel(L("copyDiff")).accessibilityIdentifier("diff.copy").disabled(text.isEmpty)
                     if isFile, let url = localURL { Button { NSWorkspace.shared.open(url) } label: { Image(systemName: "arrow.up.forward.app") }.help(L("openInEditor")).accessibilityLabel(L("openInEditor")).accessibilityIdentifier("diff.openEditor") }
                 }.fixedSize()
                 Button(L("close")) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("diff.close")
-            }.padding(.horizontal, 16).padding(.vertical, 12).background(.bar)
+            }.padding(.horizontal, 16).padding(.vertical, 12).background(Brand.bar)
             Divider()
             if !loaded { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
             else if text.isEmpty { ContentUnavailableView(L("noDifferences"), systemImage: "equal.circle", description: Text(L("noDifferencesDetail"))).frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity) }
+            else if !sections.isEmpty { DiffSectionsView(sections: sections, collapsed: collapsed, toggle: toggle).transition(.opacity).accessibilityIdentifier("diff.content") }
             else { DiffView(text: text, path: isFile ? request.title : nil).transition(.opacity).accessibilityIdentifier("diff.content") }
         }
         .frame(minWidth: 760, idealWidth: 940, minHeight: 520, idealHeight: 660)
         .animation(.easeOut(duration: 0.2), value: loaded)
+        #if DEBUG || BUTAKE_QA
+        .onReceive(NotificationCenter.default.publisher(for: .init("butake.qa.diffToggle"))) { note in if let file = note.object as? Int, fileSections.indices.contains(file) { toggle(fileSections[file].id) } }
+        #endif
         .task {
             guard let root = store.repository?.root else { return }
             do { text = try await store.engine.query(root, request.args) } catch { text = error.localizedDescription }
+            if !isFile {
+                sections = DiffSection.split(DiffView.capped(text))
+                // Many files: start with the list of what changed and let the reader open what matters.
+                if fileSections.count > 10 { collapsed = Set(fileSections.map(\.id)) }
+            }
             loaded = true
         }
     }
@@ -524,8 +544,8 @@ struct ToastView: View {
     let toast: Toast
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: toast.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(toast.destructive ? Brand.warning : Brand.accent).symbolEffect(.bounce, value: toast.id)
-            Text(toast.message).font(.system(size: 12, weight: .medium)).lineLimit(2)
+            Image(systemName: toast.icon).font(.ui(size: 14, weight: .semibold)).foregroundStyle(toast.destructive ? Brand.warning : Brand.accent).symbolEffect(.bounce, value: toast.id)
+            Text(toast.message).font(.ui(size: 12, weight: .medium)).lineLimit(2)
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
         .background(.regularMaterial, in: Capsule())
@@ -540,10 +560,10 @@ private struct BranchGroupLabel: View {
     let prefix: String; let count: Int
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: BranchNaming.groupIcon(prefix)).font(.caption).foregroundStyle(.secondary).frame(width: 14)
-            Text(BranchNaming.groupTitle(prefix)).font(.system(size: 11)).lineLimit(1)
+            Image(systemName: BranchNaming.groupIcon(prefix)).font(.uiCaption).foregroundStyle(.secondary).frame(width: 14)
+            Text(BranchNaming.groupTitle(prefix)).font(.ui(size: 11)).lineLimit(1)
             Spacer()
-            Text("\(count)").font(.system(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
+            Text("\(count)").font(.ui(size: 9.5, weight: .medium).monospacedDigit()).foregroundStyle(.tertiary)
         }.help("\(prefix)/").accessibilityLabel("\(BranchNaming.groupTitle(prefix)), \(count)")
     }
 }
@@ -552,12 +572,12 @@ private struct SidebarRemoteBranchRow: View {
     let store: WorkspaceStore; let remote: RemoteBranch; var grouped = false
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: "cloud").font(.caption).foregroundStyle(.secondary).frame(width: 14)
+            Image(systemName: "cloud").font(.uiCaption).foregroundStyle(.secondary).frame(width: 14)
             Text(grouped ? BranchNaming.leaf(remote.short) : remote.short).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
             Spacer()
-            if let date = remote.date { Text(RelativeDateCache.shared.text(for: date)).font(.system(size: 9.5)).foregroundStyle(.tertiary) }
+            if let date = remote.date { Text(RelativeDateCache.shared.text(for: date)).font(.ui(size: 9.5)).foregroundStyle(.tertiary) }
         }
-        .font(.system(size: 11)).contentShape(Rectangle())
+        .font(.ui(size: 11)).contentShape(Rectangle())
         .help(remote.name)
         .onTapGesture(count: 2) { store.trackBranch(remote) }
         .contextMenu {
@@ -580,15 +600,15 @@ private struct SidebarBranchRow: View {
     @State private var hoverTask: Task<Void, Never>?
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: store.isProtected(branch.name) ? "lock" : "arrow.triangle.branch").font(.caption).foregroundStyle(branch.current ? Brand.accent : .secondary)
+            Image(systemName: store.isProtected(branch.name) ? "lock" : "arrow.triangle.branch").font(.uiCaption).foregroundStyle(branch.current ? Brand.accent : .secondary)
             Text(grouped ? BranchNaming.leaf(branch.name) : branch.name).lineLimit(1).truncationMode(.middle).fontWeight(branch.current ? .semibold : .regular)
             Spacer()
-            if branch.gone == true { Image(systemName: "cloud.slash").font(.system(size: 9)).foregroundStyle(Brand.warning).help(L("branchGone")) }
-            if (branch.ahead ?? 0) > 0 || (branch.behind ?? 0) > 0 { Text(String(format: L("aheadBehind"), branch.ahead ?? 0, branch.behind ?? 0)).font(.system(size: 9, weight: .medium).monospacedDigit()).foregroundStyle(.secondary) }
+            if branch.gone == true { Image(systemName: "cloud.slash").font(.ui(size: 9)).foregroundStyle(Brand.warning).help(L("branchGone")) }
+            if (branch.ahead ?? 0) > 0 || (branch.behind ?? 0) > 0 { Text(String(format: L("aheadBehind"), branch.ahead ?? 0, branch.behind ?? 0)).font(.ui(size: 9, weight: .medium).monospacedDigit()).foregroundStyle(.secondary) }
             if branch.current { Circle().fill(Brand.accent).frame(width: 6, height: 6).shadow(color: Brand.accent.opacity(0.6), radius: hovering ? 4 : 0) }
-            else if hovering { Image(systemName: "info.circle").font(.system(size: 10)).foregroundStyle(.secondary).transition(.opacity) }
+            else if hovering { Image(systemName: "info.circle").font(.ui(size: 10)).foregroundStyle(.secondary).transition(.opacity) }
         }
-        .font(.system(size: 11)).contentShape(Rectangle())
+        .font(.ui(size: 11)).contentShape(Rectangle())
         .onHover { inside in
             withAnimation(.easeOut(duration: 0.12)) { hovering = inside }
             hoverTask?.cancel()
@@ -626,30 +646,30 @@ private struct SidebarBranchCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: store.isProtected(branch.name) ? "lock.fill" : "arrow.triangle.branch").foregroundStyle(Brand.accent)
-                Text(branch.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                if branch.current { Text(L("current")).font(.system(size: 9, weight: .semibold)).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.accent.opacity(0.14), in: Capsule()) }
+                Text(branch.name).font(.ui(size: 13, weight: .semibold)).lineLimit(1)
+                if branch.current { Text(L("current")).font(.ui(size: 9, weight: .semibold)).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.accent.opacity(0.14), in: Capsule()) }
             }
-            Label(branch.upstream.isEmpty ? L("noUpstream") : branch.upstream, systemImage: "network").font(.caption).foregroundStyle(.secondary)
+            Label(branch.upstream.isEmpty ? L("noUpstream") : branch.upstream, systemImage: "network").font(.uiCaption).foregroundStyle(.secondary)
             if branch.current, let repo = store.repository, !branch.upstream.isEmpty {
                 HStack(spacing: 12) {
                     Label("\(repo.ahead) \(L("toPush"))", systemImage: "arrow.up").foregroundStyle(repo.ahead > 0 ? Brand.accent : .secondary)
                     Label("\(repo.behind) \(L("toPull"))", systemImage: "arrow.down").foregroundStyle(repo.behind > 0 ? Brand.warning : .secondary)
-                }.font(.caption.monospacedDigit())
+                }.font(.uiCaption.monospacedDigit())
             }
-            if store.isProtected(branch.name) { Label(String(format: L("protectedMain"), branch.name), systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary) }
+            if store.isProtected(branch.name) { Label(String(format: L("protectedMain"), branch.name), systemImage: "lock.shield").font(.uiCaption).foregroundStyle(.secondary) }
             Divider()
             if let tip {
-                Text(L("lastBranchCommit")).font(.caption2).foregroundStyle(.secondary)
+                Text(L("lastBranchCommit")).font(.uiCaption2).foregroundStyle(.secondary)
                 HStack(alignment: .top, spacing: 10) {
                     AuthorAvatar(name: tip.author, size: 26)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(tip.subject).font(.system(size: 12, weight: .medium)).lineLimit(2)
-                        Text("\(tip.author) · \(tip.date.formatted(.relative(presentation: .named)))").font(.caption).foregroundStyle(.secondary)
-                        Text(tip.shortHash).font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.accent)
+                        Text(tip.subject).font(.ui(size: 12, weight: .medium)).lineLimit(2)
+                        Text("\(tip.author) · \(tip.date.formatted(.relative(presentation: .named)))").font(.uiCaption).foregroundStyle(.secondary)
+                        Text(tip.shortHash).font(.ui(size: 10, design: .monospaced)).foregroundStyle(Brand.accent)
                     }
                 }
-            } else { Text(L("tipOutsideHistory")).font(.caption).foregroundStyle(.secondary) }
-            if !branch.current { Text(L("doubleClickSwitch")).font(.caption2).foregroundStyle(.tertiary) }
+            } else { Text(L("tipOutsideHistory")).font(.uiCaption).foregroundStyle(.secondary) }
+            if !branch.current { Text(L("doubleClickSwitch")).font(.uiCaption2).foregroundStyle(.tertiary) }
         }.padding(14).frame(width: 290, alignment: .leading)
     }
 }
@@ -711,7 +731,7 @@ private struct SidebarCount: View {
     var body: some View {
         // The sidebar's selected row is accent-filled while the window is active.
         let selected = selected && windowState == .key
-        Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit())
+        Text("\(count)").font(.ui(size: 10, weight: .semibold).monospacedDigit())
             .foregroundStyle(selected ? Color.white : Brand.accent)
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(selected ? Color.white.opacity(0.22) : Brand.accent.opacity(0.14), in: Capsule())

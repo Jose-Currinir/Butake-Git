@@ -26,7 +26,7 @@ struct PullRequestDetail: View {
         VStack(spacing: 0) {
             PRHeader(pr: pr, repo: repo, reviews: reviews, checks: checks, totals: totals, tab: $tab, busy: busy) { pendingAction = $0 }
             Divider()
-            if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Brand.danger).textSelection(.enabled).padding(.horizontal, 20).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading).background(Brand.danger.opacity(0.06)) }
+            if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle.fill").font(.uiCaption).foregroundStyle(Brand.danger).textSelection(.enabled).padding(.horizontal, 20).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading).background(Brand.danger.opacity(0.06)) }
             switch tab {
             case .overview: overview
             case .changes: PRChangesView(store: store, pr: pr, files: files, note: filesNote) { Task { await loadFiles() } }
@@ -50,13 +50,13 @@ struct PullRequestDetail: View {
                 if !reviews.isEmpty { ReviewsCard(reviews: reviews) }
                 PRCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) { AuthorAvatar(name: pr.author, size: 22); Text(pr.author).font(.system(size: 12, weight: .semibold)); Text(L("prOpenedThis")).font(.caption).foregroundStyle(.secondary) }
-                        if pr.body.isEmpty { Text(L("prNoDescription")).font(.callout).foregroundStyle(.tertiary) }
+                        HStack(spacing: 8) { AuthorAvatar(name: pr.author, size: 22); Text(pr.author).font(.ui(size: 12, weight: .semibold)); Text(L("prOpenedThis")).font(.uiCaption).foregroundStyle(.secondary) }
+                        if pr.body.isEmpty { Text(L("prNoDescription")).font(.uiCallout).foregroundStyle(.tertiary) }
                         else { MarkdownText(pr.body) }
                     }.padding(14)
                 }
                 if !comments.isEmpty {
-                    Text(L("prConversation")).font(.headline).padding(.top, 4)
+                    Text(L("prConversation")).font(.uiHeadline).padding(.top, 4)
                     ForEach(comments) { comment in
                         CommentCard(comment: comment, onReply: { quote in composer = quote }, onAgent: { copyForAgent(comment) })
                     }
@@ -123,19 +123,19 @@ private struct PRHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(pr.title).font(.system(size: 17, weight: .semibold)).textSelection(.enabled).lineLimit(2)
-                Text("#\(pr.id)").font(.system(size: 17)).foregroundStyle(.secondary)
+                Text(pr.title).font(.ui(size: 17, weight: .semibold)).textSelection(.enabled).lineLimit(2)
+                Text("#\(pr.id)").font(.ui(size: 17)).foregroundStyle(.secondary)
                 Spacer(minLength: 12)
                 reviewBadge
                 if let url = pr.url { Link(destination: url) { Image(systemName: "arrow.up.right.square") }.help(String(format: L("openIn"), repo.provider.title)).accessibilityLabel(String(format: L("openIn"), repo.provider.title)) }
             }
             HStack(spacing: 8) {
                 PRStateChip(state: pr.state, draft: pr.draft)
-                (Text(pr.author).fontWeight(.semibold) + Text(" " + L("prWantsToMerge") + " ")).font(.caption).foregroundStyle(.secondary)
+                (Text(pr.author).fontWeight(.semibold) + Text(" " + L("prWantsToMerge") + " ")).font(.uiCaption).foregroundStyle(.secondary)
                 BranchChip(name: pr.target)
-                Text(L("prFrom")).font(.caption).foregroundStyle(.secondary)
+                Text(L("prFrom")).font(.uiCaption).foregroundStyle(.secondary)
                 BranchChip(name: pr.source)
-                if let updated = pr.updated { Text("· " + RelativeDateCache.shared.text(for: updated)).font(.caption).foregroundStyle(.tertiary) }
+                if let updated = pr.updated { Text("· " + RelativeDateCache.shared.text(for: updated)).font(.uiCaption).foregroundStyle(.tertiary) }
                 Spacer()
                 if pr.state == .open {
                     Button(L("approve")) { onAction("approve") }.disabled(busy).accessibilityIdentifier("pr.approve")
@@ -154,7 +154,7 @@ private struct PRHeader: View {
         let approved = reviews.contains { $0.verdict == .approved }
         let (title, icon, color): (String, String, Color) = changes ? (L("prChangesRequested"), "exclamationmark.circle.fill", Brand.warning) : approved ? (L("prApprovedBadge"), "checkmark.circle.fill", Brand.accent) : (L("prReviewRequired"), "exclamationmark.circle", Brand.warning)
         if pr.state == .open {
-            Label(title, systemImage: icon).font(.system(size: 11, weight: .medium)).foregroundStyle(color)
+            Label(title, systemImage: icon).font(.ui(size: 11, weight: .medium)).foregroundStyle(color)
                 .padding(.horizontal, 9).padding(.vertical, 4).overlay(Capsule().strokeBorder(color.opacity(0.45)))
         }
     }
@@ -165,7 +165,7 @@ private struct TabButton: View {
     @State private var hovering = false
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) { Text(title).font(.system(size: 12, weight: selected ? .semibold : .regular)); trailing }
+            HStack(spacing: 6) { Text(title).font(.ui(size: 12, weight: selected ? .semibold : .regular)); trailing }
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(selected ? Color.primary.opacity(0.08) : hovering ? Color.primary.opacity(0.04) : .clear, in: RoundedRectangle(cornerRadius: 7))
                 .contentShape(Rectangle())
@@ -178,7 +178,7 @@ struct PRStateChip: View {
     let state: PRState; var draft = false
     var body: some View {
         let (title, icon, color) = style
-        Label(title, systemImage: icon).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+        Label(title, systemImage: icon).font(.ui(size: 11, weight: .semibold)).foregroundStyle(.white)
             .padding(.horizontal, 9).padding(.vertical, 4).background(color.gradient, in: Capsule()).fixedSize()
     }
     private var style: (String, String, Color) {
@@ -194,7 +194,7 @@ struct PRStateChip: View {
 private struct BranchChip: View {
     let name: String
     var body: some View {
-        Text(name).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Brand.info)
+        Text(name).font(.ui(size: 10.5, design: .monospaced)).foregroundStyle(Brand.info)
             .padding(.horizontal, 6).padding(.vertical, 2).background(Brand.info.opacity(0.1), in: RoundedRectangle(cornerRadius: 5)).lineLimit(1).truncationMode(.middle)
             .textSelection(.enabled)
     }
@@ -207,7 +207,7 @@ private struct PRCard<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         content.frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.1)))
             .overlay(alignment: .leading) { if let accent { UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10).fill(accent).frame(width: 3) } }
     }
@@ -236,13 +236,13 @@ private struct ChecksCard: View {
         PRCard(accent: summary.color == .secondary ? nil : summary.color) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 12) {
-                    Image(systemName: summary.icon).font(.system(size: 22)).foregroundStyle(summary.color).symbolRenderingMode(.hierarchical)
+                    Image(systemName: summary.icon).font(.ui(size: 22)).foregroundStyle(summary.color).symbolRenderingMode(.hierarchical)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(summary.title).font(.system(size: 13, weight: .semibold))
-                        if !summary.detail.isEmpty { Text(summary.detail).font(.caption).foregroundStyle(.secondary) }
+                        Text(summary.title).font(.ui(size: 13, weight: .semibold))
+                        if !summary.detail.isEmpty { Text(summary.detail).font(.uiCaption).foregroundStyle(.secondary) }
                     }
                     Spacer()
-                    if !checks.isEmpty { Button(L(showAll ? "prHideChecks" : "prShowChecks")) { withAnimation(.snappy) { showAll.toggle() } }.buttonStyle(.link).font(.caption).accessibilityIdentifier("pr.toggleChecks") }
+                    if !checks.isEmpty { Button(L(showAll ? "prHideChecks" : "prShowChecks")) { withAnimation(.snappy) { showAll.toggle() } }.buttonStyle(.link).font(.uiCaption).accessibilityIdentifier("pr.toggleChecks") }
                 }.padding(14)
                 if showAll {
                     ForEach(groups, id: \.key) { group in
@@ -253,7 +253,7 @@ private struct ChecksCard: View {
                             HStack(spacing: 6) {
                                 Image(systemName: group.icon).foregroundStyle(group.color)
                                 Text("\(L(group.key)) (\(group.items.count))").foregroundStyle(group.color == .secondary ? .secondary : .primary)
-                            }.font(.system(size: 11.5, weight: .medium))
+                            }.font(.ui(size: 11.5, weight: .medium))
                         }
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .disclosureGroupStyle(ExpandedByDefault(initiallyExpanded: group.key != "prChecksSkipped"))
@@ -274,7 +274,7 @@ private struct ExpandedByDefault: DisclosureGroupStyle {
             let open = expanded ?? initiallyExpanded
             VStack(alignment: .leading, spacing: 6) {
                 Button { withAnimation(.snappy) { expanded = !open } } label: {
-                    HStack(spacing: 6) { Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(.secondary); configuration.label; Spacer() }.contentShape(Rectangle())
+                    HStack(spacing: 6) { Image(systemName: "chevron.right").font(.ui(size: 9, weight: .semibold)).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(.secondary); configuration.label; Spacer() }.contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 if open { configuration.content.padding(.leading, 15) }
             }
@@ -285,11 +285,11 @@ private struct CheckRow: View {
     let check: HostedCheck
     var body: some View {
         HStack(spacing: 8) {
-            CheckIcon(state: check.state).font(.system(size: 12))
-            Text(check.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
-            Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            CheckIcon(state: check.state).font(.ui(size: 12))
+            Text(check.name).font(.ui(size: 12, weight: .medium)).lineLimit(1)
+            Text(detail).font(.uiCaption).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
-            if let url = check.url { Link(L("prDetails"), destination: url).font(.caption) }
+            if let url = check.url { Link(L("prDetails"), destination: url).font(.uiCaption) }
         }.padding(.vertical, 2)
     }
     private var detail: String {
@@ -304,14 +304,14 @@ private struct ReviewsCard: View {
     var body: some View {
         PRCard {
             VStack(alignment: .leading, spacing: 8) {
-                Text(L("prReviewers")).font(.system(size: 12, weight: .semibold))
+                Text(L("prReviewers")).font(.ui(size: 12, weight: .semibold))
                 ForEach(reviews) { review in
                     HStack(spacing: 8) {
                         AuthorAvatar(name: review.author, size: 20)
-                        Text(review.author).font(.system(size: 12))
+                        Text(review.author).font(.ui(size: 12))
                         Spacer()
                         let (title, icon, color): (String, String, Color) = switch review.verdict { case .approved: (L("prApprovedBadge"), "checkmark.circle.fill", Brand.accent); case .changesRequested: (L("prChangesRequested"), "exclamationmark.circle.fill", Brand.warning); case .commented: (L("prCommented"), "text.bubble", .secondary) }
-                        Label(title, systemImage: icon).font(.caption).foregroundStyle(color)
+                        Label(title, systemImage: icon).font(.uiCaption).foregroundStyle(color)
                     }
                 }
             }.padding(14)
@@ -330,15 +330,15 @@ private struct CommentCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
                     AuthorAvatar(name: comment.author, size: 22)
-                    Text(comment.author).font(.system(size: 12, weight: .semibold))
-                    if comment.bot { Text("bot").font(.system(size: 9, weight: .medium)).padding(.horizontal, 5).padding(.vertical, 1).overlay(Capsule().strokeBorder(Color.secondary.opacity(0.5))).foregroundStyle(.secondary) }
-                    if let created = comment.created { Text("· " + RelativeDateCache.shared.text(for: created)).font(.caption).foregroundStyle(.secondary) }
+                    Text(comment.author).font(.ui(size: 12, weight: .semibold))
+                    if comment.bot { Text("bot").font(.ui(size: 9, weight: .medium)).padding(.horizontal, 5).padding(.vertical, 1).overlay(Capsule().strokeBorder(Color.secondary.opacity(0.5))).foregroundStyle(.secondary) }
+                    if let created = comment.created { Text("· " + RelativeDateCache.shared.text(for: created)).font(.uiCaption).foregroundStyle(.secondary) }
                     Spacer()
-                    if let url = comment.url { Link(destination: url) { Image(systemName: "arrow.up.right.square") }.font(.caption) }
+                    if let url = comment.url { Link(destination: url) { Image(systemName: "arrow.up.right.square") }.font(.uiCaption) }
                 }.padding(.horizontal, 14).padding(.vertical, 10)
                 if let path = comment.path {
                     Divider()
-                    HStack(spacing: 6) { FileTypeIcon(path: path, size: 14); Text(path).font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.head); if let line = comment.line { Text("L\(line)").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary) } }
+                    HStack(spacing: 6) { FileTypeIcon(path: path, size: 14); Text(path).font(.ui(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.head); if let line = comment.line { Text("L\(line)").font(.ui(size: 10, design: .monospaced)).foregroundStyle(.secondary) } }
                         .padding(.horizontal, 14).padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.03))
                     if let hunk = comment.hunk { MiniDiff(text: PRSuggestion.tail(of: hunk, lines: 6)) }
                 }
@@ -346,7 +346,7 @@ private struct CommentCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     MarkdownText(PRSuggestion.stripping(comment.body))
                     if let suggestion = PRSuggestion.extract(comment.body) {
-                        Text(L("prSuggestedChange")).font(.caption).foregroundStyle(.secondary)
+                        Text(L("prSuggestedChange")).font(.uiCaption).foregroundStyle(.secondary)
                         MiniDiff(text: suggestion.diff(original: comment.hunk)).clipShape(RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.08)))
                     }
                 }.padding(14)
@@ -355,7 +355,7 @@ private struct CommentCard: View {
                     Button(L("prReply")) { onReply(comment.body.split(separator: "\n").map { "> " + $0 }.joined(separator: "\n") + "\n\n") }.buttonStyle(.borderless)
                     Spacer()
                     Button { onAgent() } label: { Label(L("prFixWithAgent"), systemImage: "sparkles") }.help(L("prFixWithAgentHelp")).accessibilityIdentifier("pr.comment.agent.\(comment.id)")
-                }.font(.caption).controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8)
+                }.font(.uiCaption).controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8)
             }
         }
     }
@@ -391,7 +391,7 @@ private struct MiniDiff: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
                 let color: Color = line.hasPrefix("+") ? Brand.accent : line.hasPrefix("-") ? Brand.danger : .clear
-                Text(line.isEmpty ? " " : String(line)).font(.system(size: 11, design: .monospaced))
+                Text(line.isEmpty ? " " : String(line)).font(.ui(size: 11, design: .monospaced))
                     .foregroundStyle(line.hasPrefix("+") || line.hasPrefix("-") ? Color.primary : Color.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 1.5)
                     .background(color.opacity(0.14))
@@ -409,13 +409,13 @@ private struct CommentComposer: View {
         PRCard {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topLeading) {
-                    if text.isEmpty { Text(L("prAddComment")).font(.system(size: 12)).foregroundStyle(.tertiary).padding(.horizontal, 15).padding(.vertical, 12).allowsHitTesting(false) }
-                    TextEditor(text: $text).font(.system(size: 12)).scrollContentBackground(.hidden).focused($focused).padding(10).frame(minHeight: 80)
+                    if text.isEmpty { Text(L("prAddComment")).font(.ui(size: 12)).foregroundStyle(.tertiary).padding(.horizontal, 15).padding(.vertical, 12).allowsHitTesting(false) }
+                    TextEditor(text: $text).font(.ui(size: 12)).scrollContentBackground(.hidden).focused($focused).padding(10).frame(minHeight: 80)
                         .accessibilityLabel(L("comment")).accessibilityIdentifier("pr.commentText")
                 }
                 Divider()
                 HStack {
-                    Text(L("prMarkdownHint")).font(.caption2).foregroundStyle(.tertiary)
+                    Text(L("prMarkdownHint")).font(.uiCaption2).foregroundStyle(.tertiary)
                     Spacer()
                     Button(L("sendComment"), action: send).buttonStyle(.borderedProminent).controlSize(.small).keyboardShortcut(.return, modifiers: .command)
                         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy).accessibilityIdentifier("pr.sendComment")
@@ -432,7 +432,7 @@ private struct MarkdownText: View {
     init(_ source: String) { self.source = source }
     var body: some View {
         let attributed = (try? AttributedString(markdown: source, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(source)
-        Text(attributed).font(.system(size: 12.5)).lineSpacing(2).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+        Text(attributed).font(.ui(size: 12.5)).lineSpacing(2).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -455,9 +455,9 @@ private struct PRChangesView: View {
                     HStack(spacing: 8) {
                         FileTypeIcon(path: file.path, size: 15)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text((file.path as NSString).lastPathComponent).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                            Text((file.path as NSString).lastPathComponent).font(.ui(size: 12, weight: .medium)).lineLimit(1)
                             let folder = (file.path as NSString).deletingLastPathComponent
-                            if !folder.isEmpty { Text(folder).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                            if !folder.isEmpty { Text(folder).font(.ui(size: 10)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
                         }
                         Spacer(minLength: 4)
                         StatsBadge(stats: file.stats)

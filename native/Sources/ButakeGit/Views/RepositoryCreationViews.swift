@@ -27,12 +27,12 @@ struct NewRepositorySheet: View {
                 }
                 Toggle(L("newRepositoryDevelop"), isOn: $withDevelop).help(L("newRepositoryDevelopHelp"))
                 if !name.isEmpty {
-                    if isRepository { Label(String(format: L("newRepositoryExists"), name), systemImage: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning).font(.caption) }
-                    else { Text(String(format: FileManager.default.fileExists(atPath: target) ? L("newRepositoryInExisting") : L("cloneWillCreate"), abbreviatePath(target))).font(.caption).foregroundStyle(.secondary) }
+                    if isRepository { Label(String(format: L("newRepositoryExists"), name), systemImage: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning).font(.uiCaption) }
+                    else { Text(String(format: FileManager.default.fileExists(atPath: target) ? L("newRepositoryInExisting") : L("cloneWillCreate"), abbreviatePath(target))).font(.uiCaption).foregroundStyle(.secondary) }
                 }
-                Text(L("newRepositoryContents")).font(.caption).foregroundStyle(.secondary)
-                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.danger).font(.caption) }
-            }.formStyle(.grouped)
+                Text(L("newRepositoryContents")).font(.uiCaption).foregroundStyle(.secondary)
+                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.danger).font(.uiCaption) }
+            }.formStyle(.grouped).themedScroll()
             Divider()
             HStack {
                 if working { Spinner(size: 14) }
@@ -111,19 +111,19 @@ struct PublishRepositorySheet: View {
                     }
                     if !owner.isEmpty && !name.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(L("publishSteps")).font(.caption.weight(.semibold))
+                            Text(L("publishSteps")).font(.uiCaption.weight(.semibold))
                             if resuming { Text("1. " + String(format: L("publishStepExisting"), provider.title, "\(owner)/\(slug)")) }
                             else { Text("1. " + String(format: L("publishStepCreate"), provider.title, "\(owner)/\(slug)", L(isPrivate ? "publishPrivateShort" : "publishPublicShort"))) }
                             Text("2. " + L(resuming ? "publishStepRemoteUpdate" : "publishStepRemote"))
                             Text("3. " + String(format: L("publishStepPush"), branches.sorted().joined(separator: ", ")))
-                        }.font(.caption).foregroundStyle(.secondary)
+                        }.font(.uiCaption).foregroundStyle(.secondary)
                     }
-                    if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.danger).font(.caption).textSelection(.enabled) }
-                }.formStyle(.grouped)
+                    if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.danger).font(.uiCaption).textSelection(.enabled) }
+                }.formStyle(.grouped).themedScroll()
             }
             Divider()
             HStack {
-                if working { Spinner(size: 14); Text(L("publishing")).font(.caption).foregroundStyle(.secondary) }
+                if working { Spinner(size: 14); Text(L("publishing")).font(.uiCaption).foregroundStyle(.secondary) }
                 Spacer()
                 Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(working)
                 // Publishing is outward-facing: click only, never Return.
@@ -181,8 +181,8 @@ private struct CreationHeader: View {
     let icon: String; let title: String; let subtitle: String
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 20, weight: .medium)).foregroundStyle(Brand.accent)
-            VStack(alignment: .leading, spacing: 2) { Text(title).font(.system(size: 15, weight: .semibold)); Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+            Image(systemName: icon).font(.ui(size: 20, weight: .medium)).foregroundStyle(Brand.accent)
+            VStack(alignment: .leading, spacing: 2) { Text(title).font(.ui(size: 15, weight: .semibold)); Text(subtitle).font(.uiCaption).foregroundStyle(.secondary) }
             Spacer()
         }.padding(18)
     }

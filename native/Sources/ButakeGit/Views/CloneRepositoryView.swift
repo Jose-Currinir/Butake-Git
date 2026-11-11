@@ -31,44 +31,44 @@ struct CloneRepositorySheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "square.and.arrow.down.on.square").font(.system(size: 20, weight: .medium)).foregroundStyle(Brand.accent)
+                Image(systemName: "square.and.arrow.down.on.square").font(.ui(size: 20, weight: .medium)).foregroundStyle(Brand.accent)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("cloneRepository")).font(.system(size: 15, weight: .semibold))
-                    Text(L("cloneSubtitle")).font(.caption).foregroundStyle(.secondary)
+                    Text(L("cloneRepository")).font(.ui(size: 15, weight: .semibold))
+                    Text(L("cloneSubtitle")).font(.uiCaption).foregroundStyle(.secondary)
                 }
                 Spacer()
             }.padding(18)
             Divider()
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L("cloneAddress")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Text(L("cloneAddress")).font(.ui(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                     TextField("git@bitbucket.org:equipo/repositorio.git", text: $url)
-                        .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced)).accessibilityIdentifier("clone.url")
+                        .textFieldStyle(.roundedBorder).font(.ui(size: 12, design: .monospaced)).accessibilityIdentifier("clone.url")
                         .onChange(of: url) { _, value in selected = accounts.first { $0.sshURL == value || $0.httpsURL == value }?.id; if !nameEdited { name = Self.folderName(value) } }
-                    if !url.isEmpty && !urlLooksValid { Label(L("cloneInvalidURL"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(Brand.warning) }
+                    if !url.isEmpty && !urlLooksValid { Label(L("cloneInvalidURL"), systemImage: "exclamationmark.circle").font(.uiCaption).foregroundStyle(Brand.warning) }
                 }
                 if !connected.isEmpty { accountsList }
-                else { Label(L("cloneConnectHint"), systemImage: "person.crop.circle.badge.plus").font(.caption).foregroundStyle(.secondary) }
+                else { Label(L("cloneConnectHint"), systemImage: "person.crop.circle.badge.plus").font(.uiCaption).foregroundStyle(.secondary) }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L("cloneDestination")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    Text(L("cloneDestination")).font(.ui(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         Label(abbreviatePath(parent), systemImage: "folder").lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 8).padding(.vertical, 5).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
                         Button(L("chooseFolder")) { chooseParent() }.accessibilityIdentifier("clone.chooseFolder")
                     }
                     HStack(spacing: 8) {
-                        Text(L("cloneFolderName")).font(.caption).foregroundStyle(.secondary)
+                        Text(L("cloneFolderName")).font(.uiCaption).foregroundStyle(.secondary)
                         TextField(L("cloneFolderName"), text: Binding(get: { name }, set: { name = $0; nameEdited = true })).textFieldStyle(.roundedBorder).accessibilityIdentifier("clone.name")
                     }
-                    if exists { Label(String(format: L("cloneFolderExists"), name), systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Brand.warning) }
-                    else if !name.isEmpty { Text(String(format: L("cloneWillCreate"), abbreviatePath(target))).font(.caption).foregroundStyle(.tertiary) }
+                    if exists { Label(String(format: L("cloneFolderExists"), name), systemImage: "exclamationmark.triangle.fill").font(.uiCaption).foregroundStyle(Brand.warning) }
+                    else if !name.isEmpty { Text(String(format: L("cloneWillCreate"), abbreviatePath(target))).font(.uiCaption).foregroundStyle(.tertiary) }
                 }
-                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").font(.caption).foregroundStyle(Brand.danger).textSelection(.enabled) }
+                if !error.isEmpty { Label(error, systemImage: "xmark.octagon.fill").font(.uiCaption).foregroundStyle(Brand.danger).textSelection(.enabled) }
             }.padding(18)
             Spacer(minLength: 0)
             Divider()
             HStack {
-                if cloning { Spinner(size: 14); Text(L("cloning")).font(.caption).foregroundStyle(.secondary) }
+                if cloning { Spinner(size: 14); Text(L("cloning")).font(.uiCaption).foregroundStyle(.secondary) }
                 Spacer()
                 Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(cloning)
                 Button(L("cloneAction")) { Task { await clone() } }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
@@ -87,7 +87,7 @@ struct CloneRepositorySheet: View {
     private var accountsList: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(L("cloneYourRepositories")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Text(L("cloneYourRepositories")).font(.ui(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                 Spacer()
                 Picker("", selection: $useSSH) { Text("SSH").tag(true); Text("HTTPS").tag(false) }.pickerStyle(.segmented).labelsHidden().fixedSize()
                     .help(L("cloneProtocolHelp"))
@@ -98,17 +98,17 @@ struct CloneRepositorySheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: repo.provider == .github ? "chevron.left.forwardslash.chevron.right" : "shippingbox").foregroundStyle(.secondary).frame(width: 16)
                     VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 5) { Text(repo.fullName).font(.system(size: 12, weight: .medium)).lineLimit(1); if repo.isPrivate { Image(systemName: "lock.fill").font(.system(size: 8)).foregroundStyle(.tertiary) } }
-                        if !repo.summary.isEmpty { Text(repo.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                        HStack(spacing: 5) { Text(repo.fullName).font(.ui(size: 12, weight: .medium)).lineLimit(1); if repo.isPrivate { Image(systemName: "lock.fill").font(.ui(size: 8)).foregroundStyle(.tertiary) } }
+                        if !repo.summary.isEmpty { Text(repo.summary).font(.uiCaption2).foregroundStyle(.secondary).lineLimit(1) }
                     }
                     Spacer()
-                    if let updated = repo.updated { Text(RelativeDateCache.shared.text(for: updated)).font(.caption2).foregroundStyle(.tertiary) }
+                    if let updated = repo.updated { Text(RelativeDateCache.shared.text(for: updated)).font(.uiCaption2).foregroundStyle(.tertiary) }
                 }.padding(.vertical, 2).tag(repo.id)
             }
-            .listStyle(.bordered(alternatesRowBackgrounds: false)).frame(minHeight: 150)
+            .listStyle(.bordered(alternatesRowBackgrounds: false)).themedScroll().frame(minHeight: 150)
             .overlay {
                 if loadingAccounts { Spinner(size: 18) }
-                else if accounts.isEmpty { Text(accountErrors.isEmpty ? L("cloneNoRepositories") : accountErrors.joined(separator: "\n")).font(.caption).foregroundStyle(accountErrors.isEmpty ? Color.secondary : Brand.warning).multilineTextAlignment(.center).padding() }
+                else if accounts.isEmpty { Text(accountErrors.isEmpty ? L("cloneNoRepositories") : accountErrors.joined(separator: "\n")).font(.uiCaption).foregroundStyle(accountErrors.isEmpty ? Color.secondary : Brand.warning).multilineTextAlignment(.center).padding() }
             }
             .onChange(of: selected) { _, id in if let repo = accounts.first(where: { $0.id == id }) { url = useSSH ? repo.sshURL : repo.httpsURL; nameEdited = false; name = Self.folderName(url) } }
         }

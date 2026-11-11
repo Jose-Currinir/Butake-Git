@@ -8,18 +8,18 @@ struct GitConsoleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack { Label(L("console"), systemImage: "terminal").font(.title2.weight(.semibold)); Spacer(); if store.terminalActive { Button(L("stop"), role: .destructive) { terminal?.terminate() } } }
+                HStack { Label(L("console"), systemImage: "terminal").font(.uiTitle2.weight(.semibold)); Spacer(); if store.terminalActive { Button(L("stop"), role: .destructive) { terminal?.terminate() }.accessibilityIdentifier("console.stop") } }
                 HStack(alignment: .top, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 6) { Text(L("command")).font(.caption).foregroundStyle(.secondary); Picker(L("command"), selection: $store.consoleCommand) { ForEach(store.catalog.catalog.commands) { entry in Text(entry.name).tag(entry.name) } }.labelsHidden().frame(width: 180) }
-                    VStack(alignment: .leading, spacing: 6) { Text(L("arguments")).font(.caption).foregroundStyle(.secondary); TextField("--short --branch", text: $store.consoleArguments).textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced)).onSubmit { execute() } }
-                    Button(L("execute"), action: execute).buttonStyle(.borderedProminent).padding(.top, 22).disabled(store.repository == nil)
+                    VStack(alignment: .leading, spacing: 6) { Text(L("command")).font(.uiCaption).foregroundStyle(.secondary); Picker(L("command"), selection: $store.consoleCommand) { ForEach(store.catalog.catalog.commands) { entry in Text(entry.name).tag(entry.name) } }.accessibilityIdentifier("console.command").labelsHidden().frame(width: 180) }
+                    VStack(alignment: .leading, spacing: 6) { Text(L("arguments")).font(.uiCaption).foregroundStyle(.secondary); TextField("--short --branch", text: $store.consoleArguments).textFieldStyle(.roundedBorder).font(.ui(size: 12, design: .monospaced)).onSubmit { execute() } }
+                    Button(L("execute"), action: execute).accessibilityIdentifier("console.execute").buttonStyle(.borderedProminent).padding(.top, 22).disabled(store.repository == nil)
                 }.disabled(store.busy || store.terminalActive)
-                Text(store.repository.map { abbreviatePath($0.root) } ?? L("noRepository")).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(store.repository?.root ?? "")
-                Text(L("argumentsHelp")).font(.caption2).foregroundStyle(.secondary)
-            }.padding(20).background(.bar)
+                Text(store.repository.map { abbreviatePath($0.root) } ?? L("noRepository")).font(.ui(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(store.repository?.root ?? "")
+                Text(L("argumentsHelp")).font(.uiCaption2).foregroundStyle(.secondary)
+            }.padding(20).background(Brand.bar)
             Divider()
             if let launch = store.terminalLaunch {
-                NativeTerminalView(launch: launch, onReady: { terminal = $0 }, onExit: store.terminalDidFinish).id(launch.id).padding(12).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .textBackgroundColor))
+                NativeTerminalView(launch: launch, onReady: { terminal = $0 }, onExit: store.terminalDidFinish).id(launch.id).padding(12).frame(maxWidth: .infinity, maxHeight: .infinity).background(Brand.surface)
             } else {
                 ContentUnavailableView(L("console"), systemImage: "terminal", description: Text(L("terminalHelp"))).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -34,8 +34,8 @@ struct NativeTerminalView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(onExit: onExit) }
     func makeNSView(context: Context) -> LocalProcessTerminalView {
         let view = LocalProcessTerminalView(frame: .zero)
-        view.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        view.nativeBackgroundColor = .textBackgroundColor; view.nativeForegroundColor = .textColor
+        view.font = NSFont.monospacedSystemFont(ofSize: TextScale.points(12), weight: .regular)
+        view.nativeBackgroundColor = Brand.surfaceNS; view.nativeForegroundColor = Brand.textNS
         view.processDelegate = context.coordinator
         view.feed(text: "Butake Git · \(launch.root)\r\n$ \(launch.agentExecutable.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "git") \(launch.agentExecutable == nil ? launch.command + " " + launch.arguments : "")\r\n\r\n")
         var arguments = ["--terminal", launch.root, launch.command, launch.arguments]
@@ -48,7 +48,7 @@ struct NativeTerminalView: NSViewRepresentable {
         }
         return view
     }
-    func updateNSView(_ view: LocalProcessTerminalView, context: Context) { view.nativeBackgroundColor = .textBackgroundColor; view.nativeForegroundColor = .textColor }
+    func updateNSView(_ view: LocalProcessTerminalView, context: Context) { view.nativeBackgroundColor = Brand.surfaceNS; view.nativeForegroundColor = Brand.textNS }
     static func dismantleNSView(_ view: LocalProcessTerminalView, coordinator: Coordinator) { view.terminate() }
     @MainActor final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
         let onExit: (Int32?) -> Void

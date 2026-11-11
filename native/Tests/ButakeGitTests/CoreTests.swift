@@ -71,6 +71,22 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(diff.lines.filter { $0.kind == .addition }.count, 2)
         XCTAssertFalse(diff.lines.contains { $0.text.hasPrefix("---") || $0.text.hasPrefix("+++") })
         XCTAssertEqual(diff.lines.first?.text, "abc123 feat: x")
+        XCTAssertEqual(diff.files, [DiffFile(path: "one", additions: 1, deletions: 1), DiffFile(path: "two", additions: 1, deletions: 1)])
+    }
+    func testDiffFilesCarryKindAndSplitIntoSections() {
+        let diff = UnifiedDiff("abc feat: x\n\ndiff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+a\n+b\ndiff --git a/gone.txt b/gone.txt\ndeleted file mode 100644\n--- a/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\ndiff --git a/old.txt b/moved.txt\nsimilarity index 100%\nrename from old.txt\nrename to moved.txt\ndiff --git a/img.png b/img.png\nBinary files a/img.png and b/img.png differ\n")
+        XCTAssertEqual(diff.files.map(\.path), ["new.txt", "gone.txt", "moved.txt", "img.png"])
+        XCTAssertEqual(diff.files.map(\.kind), [.added, .deleted, .renamed, .modified])
+        XCTAssertEqual(diff.files[0].additions, 2); XCTAssertEqual(diff.files[1].deletions, 1); XCTAssertTrue(diff.files[3].binary)
+        XCTAssertEqual(diff.lines.filter(\.fileHeader).compactMap(\.file), [0, 1, 2, 3])
+        XCTAssertEqual(diff.files[2].originalPath, "old.txt")
+        // The same output split into cards: the commit note, then one section per file with its own patch.
+        let sections = DiffSection.split("\u{1}abc feat: x\nQA · hoy\n\ncuerpo\n\ndiff --git a/new.txt b/new.txt\nnew file mode 100644\n@@ -0,0 +1 @@\n+a\ndiff --git a/two b/two\n@@ -1 +1 @@\n-c\n+d\n")
+        XCTAssertEqual(sections.map(\.id), [0, 1, 2]); XCTAssertEqual(sections[0].note, "abc feat: x\nQA · hoy\n\ncuerpo")
+        XCTAssertEqual(sections[1].file?.kind, .added); XCTAssertTrue(sections[1].patch.hasPrefix("diff --git a/new.txt")); XCTAssertFalse(sections[1].patch.contains("two"))
+        XCTAssertEqual(sections[2].file, DiffFile(path: "two", additions: 1, deletions: 1))
+        XCTAssertEqual(UnifiedDiff(sections[2].patch).lines.filter { $0.kind == .addition }.count, 1)
+        XCTAssertTrue(DiffSection.split("fatal: bad revision").isEmpty)
     }
     func testCommitHeaderMarkerResetsPreamble() {
         let diff = UnifiedDiff("\u{1}aaa feat: a\n\n---\n a.txt | 1 +\n\ndiff --git a/a.txt b/a.txt\n@@ -0,0 +1 @@\n+a\n\u{1}bbb feat: b\n\n---\n b.txt | 1 +\n\ndiff --git a/b.txt b/b.txt\n@@ -0,0 +1 @@\n+b\n")
@@ -122,6 +138,12 @@ final class CoreTests: XCTestCase {
         let _: String = try await engine.call(["method": "action", "path": directory.path, "action": "stage", "value": "example.txt"])
         let snapshot: RepositorySnapshot = try await engine.call(["method": "snapshot", "path": directory.path])
         XCTAssertEqual(snapshot.branch, "develop"); XCTAssertEqual(snapshot.staged.first?.path, "example.txt")
+        // The files-only refresh returns exactly the snapshot's changed files.
+        let status: [ChangedFile] = try await engine.call(["method": "status", "path": directory.path])
+        XCTAssertEqual(status, snapshot.files); XCTAssertEqual(snapshot.remotes, []); XCTAssertEqual(snapshot.primary, "main")
+        let watcher = try XCTUnwrap(RepositoryWatcher(root: directory.path) { _ in })
+        XCTAssertTrue(watcher.isGitState(directory.path + "/.git/HEAD")); XCTAssertFalse(watcher.isGitState(directory.path + "/example.txt"))
+        XCTAssertTrue(watcher.isRelevant(directory.path + "/.git/index")); XCTAssertFalse(watcher.isRelevant(directory.path + "/.git/objects/ab/cd"))
         let file: WorkingFile = try await engine.call(["method": "readFile", "path": directory.path, "file": "example.txt"])
         XCTAssertEqual(file.branch, "develop"); XCTAssertEqual(file.content, "example\n")
         let _: String = try await engine.call(["method": "saveFile", "path": directory.path, "file": "example.txt", "content": "edited\n", "expected": file.content, "head": file.head, "branch": file.branch, "confirmed": true])

@@ -318,7 +318,8 @@ struct ChangeNode: Identifiable, Hashable {
     }
 }
 /// Where a commit lives relative to main/develop, by patch content.
-enum SyncMark { case onlyMain, onlyDevelop, copied }
+/// Where a commit stands between the repository's primary branch and the branch it is compared with.
+enum SyncMark: Equatable { case onlyPrimary(String), onlyOther(String), copied }
 /// Guided recovery after a pull fails; `code` comes from the engine's classification.
 struct PullProblem: Identifiable { var id = UUID(); var code: String; var detail: String }
 struct Toast: Identifiable, Equatable { var id = UUID(); var message: String; var icon: String; var destructive = false }

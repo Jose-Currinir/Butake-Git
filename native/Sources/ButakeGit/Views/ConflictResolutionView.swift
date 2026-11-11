@@ -12,18 +12,18 @@ struct ConflictResolutionView: View {
     var unresolved: Bool { result.components(separatedBy: "\n").contains { $0.hasPrefix("<<<<<<< ") || $0.hasPrefix("=======") || $0.hasPrefix(">>>>>>> ") } }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { Label(L("resolveConflictTitle"), systemImage: "arrow.triangle.merge").font(.title2.weight(.semibold)); Spacer(); if remaining > 1 { Text(String(format: L("conflictsPending"), remaining)).font(.caption).foregroundStyle(Brand.warning) }; Text(file.path).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1) }
-            Text(L("conflictHelp")).font(.caption).foregroundStyle(.secondary)
+            HStack { Label(L("resolveConflictTitle"), systemImage: "arrow.triangle.merge").font(.uiTitle2.weight(.semibold)); Spacer(); if remaining > 1 { Text(String(format: L("conflictsPending"), remaining)).font(.uiCaption).foregroundStyle(Brand.warning) }; Text(file.path).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1) }
+            Text(L("conflictHelp")).font(.uiCaption).foregroundStyle(.secondary)
             if let versions {
                 HSplitView {
                     ConflictPane(title: L(rebasing ? "oursRebase" : "ours"), content: versions.ours) { withAnimation(.snappy) { result = versions.ours } }
                     ConflictPane(title: L(rebasing ? "theirsRebase" : "theirs"), content: versions.theirs) { withAnimation(.snappy) { result = versions.theirs } }
                 }.frame(height: 190)
-                DisclosureGroup(L("conflictBase")) { ScrollView { Text(versions.base).font(.system(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 100) }.font(.caption)
-                HStack { Text(L("result")).font(.headline); Spacer(); Button(L("useBoth")) { result = versions.ours.hasSuffix("\n") || versions.ours.isEmpty ? versions.ours + versions.theirs : versions.ours + "\n" + versions.theirs }.controlSize(.small).accessibilityIdentifier("conflict.useBoth"); if unresolved { Label(L("remainingMarkers"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(Brand.warning) } }
-                TextEditor(text: $result).font(.system(size: 12, design: .monospaced)).frame(minHeight: 180).border(.quaternary).accessibilityLabel(L("result"))
+                DisclosureGroup(L("conflictBase")) { ScrollView { Text(versions.base).font(.ui(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 100) }.font(.uiCaption)
+                HStack { Text(L("result")).font(.uiHeadline); Spacer(); Button(L("useBoth")) { result = versions.ours.hasSuffix("\n") || versions.ours.isEmpty ? versions.ours + versions.theirs : versions.ours + "\n" + versions.theirs }.controlSize(.small).accessibilityIdentifier("conflict.useBoth"); if unresolved { Label(L("remainingMarkers"), systemImage: "exclamationmark.circle").font(.uiCaption).foregroundStyle(Brand.warning) } }
+                TextEditor(text: $result).font(.ui(size: 12, design: .monospaced)).frame(minHeight: 180).border(.quaternary).accessibilityLabel(L("result"))
             } else { Spinner(size: 18).frame(maxWidth: .infinity, minHeight: 200) }
-            if !error.isEmpty { Text(error).foregroundStyle(Brand.danger).font(.caption).textSelection(.enabled) }
+            if !error.isEmpty { Text(error).foregroundStyle(Brand.danger).font(.uiCaption).textSelection(.enabled) }
             HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }; Button(L("saveResolution")) { Task { await save() } }.accessibilityIdentifier("conflict.save").buttonStyle(.borderedProminent).disabled(versions == nil || unresolved || saving) }
         }.padding(24).frame(width: 920, height: 680).task { await load() }
     }
@@ -44,5 +44,5 @@ struct ConflictResolutionView: View {
 }
 private struct ConflictPane: View {
     let title: String; let content: String; let use: () -> Void
-    var body: some View { VStack(alignment: .leading, spacing: 8) { HStack { Text(title).font(.caption.weight(.semibold)); Spacer(); Button(L("useThis"), action: use).controlSize(.small).accessibilityLabel("\(L("useThis")): \(title)") }; ScrollView([.horizontal, .vertical]) { Text(content).font(.system(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) } }.padding(12).frame(minWidth: 250).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8)) }
+    var body: some View { VStack(alignment: .leading, spacing: 8) { HStack { Text(title).font(.uiCaption.weight(.semibold)); Spacer(); Button(L("useThis"), action: use).controlSize(.small).accessibilityLabel("\(L("useThis")): \(title)") }; ScrollView([.horizontal, .vertical]) { Text(content).font(.ui(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) } }.padding(12).frame(minWidth: 250).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8)) }
 }

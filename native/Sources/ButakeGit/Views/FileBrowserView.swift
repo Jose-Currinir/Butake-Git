@@ -11,7 +11,7 @@ struct FileBrowserView: View {
     private var visible: [String] { files.filter { search.isEmpty || $0.localizedCaseInsensitiveContains(search) } }
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Label(L("files"), systemImage: "folder").font(.headline); Text("\(visible.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary); Spacer(); TextField(L("findFile"), text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 300); Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh")) }.padding(16).background(.bar)
+            HStack { Label(L("files"), systemImage: "folder").font(.uiHeadline); Text("\(visible.count)").font(.uiCaption.monospacedDigit()).foregroundStyle(.secondary); Spacer(); TextField(L("findFile"), text: $search).accessibilityIdentifier("files.findFile").textFieldStyle(.roundedBorder).frame(maxWidth: 300); Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityIdentifier("files.refresh").accessibilityLabel(L("refresh")).help(L("refresh")) }.padding(16).background(Brand.bar)
             Divider()
             if loading { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
             else if !error.isEmpty { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
@@ -22,19 +22,19 @@ struct FileBrowserView: View {
                         HStack(spacing: 12) {
                             FileTypeIcon(path: path, size: 18)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(URL(fileURLWithPath: path).lastPathComponent).font(.system(size: 12.5, weight: .medium))
-                                if !folder.isEmpty { Text(folder).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                                Text(URL(fileURLWithPath: path).lastPathComponent).font(.ui(size: 12.5, weight: .medium))
+                                if !folder.isEmpty { Text(folder).font(.ui(size: 10.5)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
                             }
                             Spacer()
                             if let file = changed[path] { ChangeKindBadge(kind: file.kind) }
                             Image(systemName: "pencil").foregroundStyle(.tertiary).help(L("editFile"))
                         }.padding(.vertical, 4).contentShape(Rectangle())
                     .tag(path).help(path)
-                }.listStyle(.inset).onChange(of: selectedPath) { _, path in if let path { target = FileEditorTarget(path: path) } }.overlay { if visible.isEmpty { ContentUnavailableView(L("noResults"), systemImage: "magnifyingglass") } }
+                }.listStyle(.inset).themedScroll().onChange(of: selectedPath) { _, path in if let path { target = FileEditorTarget(path: path) } }.overlay { if visible.isEmpty { ContentUnavailableView(L("noResults"), systemImage: "magnifyingglass") } }
             }
-            Text(L("fileBrowserScope")).font(.caption2).foregroundStyle(.secondary).padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+            Text(L("fileBrowserScope")).font(.uiCaption2).foregroundStyle(.secondary).padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Brand.bar)
         }.task(id: "\(store.repository?.root ?? "")|\(store.status)") { await load() }
-        .sheet(item: $target, onDismiss: { selectedPath = nil }) { target in FileEditorView(store: store, path: target.path) }
+        .sheet(item: $target, onDismiss: { selectedPath = nil }) { target in FileEditorView(store: store, path: target.path).themedSheet() }
     }
     private func load() async {
         guard let root = store.repository?.root else { return }; loading = true; defer { loading = false }; error = ""
@@ -61,18 +61,18 @@ struct FileEditorView: View {
                 FileTypeIcon(path: path, size: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text((path as NSString).lastPathComponent).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                        if dirty { Text(L("unsavedChanges")).font(.system(size: 10, weight: .medium)).foregroundStyle(Brand.warning).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.warning.opacity(0.12), in: Capsule()).transition(.opacity) }
+                        Text((path as NSString).lastPathComponent).font(.ui(size: 14, weight: .semibold)).lineLimit(1)
+                        if dirty { Text(L("unsavedChanges")).font(.ui(size: 10, weight: .medium)).foregroundStyle(Brand.warning).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.warning.opacity(0.12), in: Capsule()).transition(.opacity) }
                     }
                     let folder = (path as NSString).deletingLastPathComponent
-                    if !folder.isEmpty { Label(folder, systemImage: "folder").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                    if !folder.isEmpty { Label(folder, systemImage: "folder").font(.uiCaption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
                 }
                 Spacer()
                 Picker(L("editorDisplay"), selection: $tab) {
                     Text(L("editFile")).tag(0); Text(L("originalFile")).tag(1); Text(L("previewChanges")).tag(2)
                     if isMarkdown { Text(L("markdownPreview")).tag(3) }
-                }.pickerStyle(.segmented).labelsHidden().fixedSize()
-            }.padding(.horizontal, 16).padding(.vertical, 12).background(.bar).animation(.snappy, value: dirty)
+                }.pickerStyle(.segmented).labelsHidden().fixedSize().accessibilityIdentifier("files.editorDisplay")
+            }.padding(.horizontal, 16).padding(.vertical, 12).background(Brand.bar).animation(.snappy, value: dirty)
             Divider()
             if let original {
                 if tab == 0 { CodeEditorView(text: $text, path: path, editable: !saving && store.canWrite).accessibilityLabel(L("fileContent")).accessibilityIdentifier("editor.content") }
@@ -85,12 +85,12 @@ struct FileEditorView: View {
             else { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
             Divider()
             VStack(alignment: .leading, spacing: 10) {
-                if !error.isEmpty && original != nil { Text(error).font(.caption).foregroundStyle(Brand.danger).textSelection(.enabled) }
-                HStack { Text(L(store.onProtectedMain ? "editorProtected" : "saveWorkingOnly")).font(.caption2).foregroundStyle(.secondary); Spacer(); Button(L("reloadFile")) { if dirty { discard = true } else { Task { await load() } } }.disabled(saving || original == nil); Button(L("close")) { if dirty { discard = true } else { dismiss() } }.keyboardShortcut(.cancelAction); Button(L("saveFile")) { Task { await save() } }.buttonStyle(.borderedProminent).keyboardShortcut("s").disabled(!dirty || !store.canWrite || saving) }
-            }.padding(16).background(.bar)
+                if !error.isEmpty && original != nil { Text(error).font(.uiCaption).foregroundStyle(Brand.danger).textSelection(.enabled) }
+                HStack { Text(L(store.onProtectedMain ? "editorProtected" : "saveWorkingOnly")).font(.uiCaption2).foregroundStyle(.secondary); Spacer(); Button(L("reloadFile")) { if dirty { discard = true } else { Task { await load() } } }.accessibilityIdentifier("files.reloadFile").disabled(saving || original == nil); Button(L("close")) { if dirty { discard = true } else { dismiss() } }.accessibilityIdentifier("files.close").keyboardShortcut(.cancelAction); Button(L("saveFile")) { Task { await save() } }.accessibilityIdentifier("files.saveFile").buttonStyle(.borderedProminent).keyboardShortcut("s").disabled(!dirty || !store.canWrite || saving) }
+            }.padding(16).background(Brand.bar)
         }.frame(minWidth: 800, idealWidth: 980, minHeight: 580, idealHeight: 700)
         .interactiveDismissDisabled(dirty || saving)
-        .confirmationDialog(L("discardEditorChanges"), isPresented: $discard, titleVisibility: .visible) { Button(L("reloadFile"), role: .destructive) { Task { await load() } }; Button(L("closeWithoutSaving"), role: .destructive) { dismiss() }; Button(L("cancel"), role: .cancel) {} }
+        .confirmationDialog(L("discardEditorChanges"), isPresented: $discard, titleVisibility: .visible) { Button(L("reloadFile"), role: .destructive) { Task { await load() } }.accessibilityIdentifier("files.reloadFile"); Button(L("closeWithoutSaving"), role: .destructive) { dismiss() }.accessibilityIdentifier("files.closeWithoutSaving"); Button(L("cancel"), role: .cancel) {}.accessibilityIdentifier("files.cancel") }
         .task { tab = initialTab; await load() }
         .task(id: tab) {
             guard tab == 2, let original, let root = store.repository?.root, dirty else { return }
@@ -119,7 +119,7 @@ struct MarkdownPreview: View {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in view(for: block) }
             }.padding(.horizontal, 36).padding(.vertical, 28).frame(maxWidth: 820, alignment: .leading).frame(maxWidth: .infinity)
-        }.background(Color(nsColor: .textBackgroundColor))
+        }.background(Brand.surface)
     }
     private enum Block { case heading(Int, String), paragraph(String), bullet(String, Int, String), quote(String), rule, code(String) }
     private var blocks: [Block] {
@@ -147,14 +147,14 @@ struct MarkdownPreview: View {
     @ViewBuilder private func view(for block: Block) -> some View {
         switch block {
         case let .heading(level, text):
-            inline(text).font(.system(size: [26, 20, 16.5, 14.5, 13.5, 13][min(level, 6) - 1], weight: level <= 2 ? .bold : .semibold)).padding(.top, level <= 2 ? 10 : 4)
+            inline(text).font(.ui(size: [26, 20, 16.5, 14.5, 13.5, 13][min(level, 6) - 1], weight: level <= 2 ? .bold : .semibold)).padding(.top, level <= 2 ? 10 : 4)
             if level <= 2 { Divider() }
-        case let .paragraph(text): inline(text).font(.system(size: 13.5)).lineSpacing(3).textSelection(.enabled)
+        case let .paragraph(text): inline(text).font(.ui(size: 13.5)).lineSpacing(3).textSelection(.enabled)
         case let .bullet(marker, indent, text):
-            HStack(alignment: .firstTextBaseline, spacing: 8) { Text(marker).font(.system(size: 13.5, weight: .medium)).foregroundStyle(.secondary).frame(minWidth: 14, alignment: .trailing); inline(text).font(.system(size: 13.5)).lineSpacing(3).textSelection(.enabled) }.padding(.leading, CGFloat(indent) * 18)
-        case let .quote(text): inline(text).font(.system(size: 13.5)).foregroundStyle(.secondary).padding(.leading, 12).overlay(alignment: .leading) { Rectangle().fill(Brand.accent.opacity(0.5)).frame(width: 3) }
+            HStack(alignment: .firstTextBaseline, spacing: 8) { Text(marker).font(.ui(size: 13.5, weight: .medium)).foregroundStyle(.secondary).frame(minWidth: 14, alignment: .trailing); inline(text).font(.ui(size: 13.5)).lineSpacing(3).textSelection(.enabled) }.padding(.leading, CGFloat(indent) * 18)
+        case let .quote(text): inline(text).font(.ui(size: 13.5)).foregroundStyle(.secondary).padding(.leading, 12).overlay(alignment: .leading) { Rectangle().fill(Brand.accent.opacity(0.5)).frame(width: 3) }
         case .rule: Divider().padding(.vertical, 6)
-        case let .code(text): Text(text).font(.system(size: 12, design: .monospaced)).textSelection(.enabled).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        case let .code(text): Text(text).font(.ui(size: 12, design: .monospaced)).textSelection(.enabled).padding(12).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }

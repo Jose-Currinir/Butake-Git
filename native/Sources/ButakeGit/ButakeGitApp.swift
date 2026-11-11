@@ -7,6 +7,7 @@ import AppKit
     /// The window's `.task` runs again each time it is reopened; app-level startup must happen once.
     @State private var launched = false
     @AppStorage("notchEnabled") private var notchEnabled = true
+    init() { ThemedScroller.install() }
     var body: some Scene {
         Window("Butake Git", id: MainWindow.id) {
             WorkspaceView(store: workspace)
@@ -44,6 +45,12 @@ import AppKit
                 Divider()
                 Button(L("publishRepository") + "…") { workspace.publishingRepository = true }.disabled(workspace.repository?.canPublish != true)
             }
+            CommandGroup(after: .toolbar) {
+                Button(L("textLarger")) { TextScale.shared.increase() }.keyboardShortcut("+", modifiers: .command).disabled(!TextScale.shared.canIncrease)
+                Button(L("textSmaller")) { TextScale.shared.decrease() }.keyboardShortcut("-", modifiers: .command).disabled(!TextScale.shared.canDecrease)
+                Button(L("textActualSize")) { TextScale.shared.reset() }.keyboardShortcut("0", modifiers: .command).disabled(TextScale.shared.factor == 1)
+                Divider()
+            }
             CommandMenu("Git") {
                 Button(L("refresh")) { Task { await workspace.refresh() } }.keyboardShortcut("r")
                 Divider()
@@ -61,6 +68,6 @@ import AppKit
                 Button(L("console")) { workspace.route = .console }.keyboardShortcut("j", modifiers: [.command])
             }
         }
-        Settings { ConnectionSettingsView().frame(width: 640, height: 720).tint(Brand.accent) }
+        Settings { ConnectionSettingsView().frame(width: 640, height: 720).themedSheet() }
     }
 }

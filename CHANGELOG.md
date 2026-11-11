@@ -1,5 +1,26 @@
 # Cambios
 
+## 1.0.8 · 2026-11-11
+
+- **Diff por archivos:** al ver un commit o una comparación, cada archivo es una tarjeta con su estado (Nuevo,
+  Modificado, Eliminado, Movido) y sus +/−; se expande o contrae con un clic, con «Contraer todo / Expandir todo».
+- **Paneles de Cambios contraíbles:** «Sin preparar» y «Preparados para commit» se pliegan a su cabecera.
+- **Tamaño del texto:** ⌘+ y ⌘− agrandan o achican el texto de toda la app (listas, diff, editor, terminal); ⌘0 lo restablece.
+- **Tema en toda la app:** barras, listas, formularios, hojas, ajustes y terminal usan los colores del tema (antes
+  Worktrees, Etiquetas, Stash, Remotos, Reflog, Ramas y otros quedaban con el gris del sistema).
+- **Sincronizar ramas compara el estado real:** consulta el remoto al abrir, lista también las ramas que sólo
+  existen en el remoto y, si una rama de tu Mac está atrasada, compara contra la del remoto y lo avisa. Ya no
+  asume nombres de rama.
+- Las insignias del Historial («solo <rama>», «en ambas») comparan la rama principal con la rama en la que trabajas,
+  sea cual sea su nombre; antes sólo aparecían si existía una rama llamada develop.
+- Las barras de scroll usan el color de acento del tema, sin la pista gris del sistema.
+- **Accesibilidad para IA:** identificadores estables en Ramas, Herramientas, Archivos, Consola, Diccionario, Agentes y
+  Rebase; preparar un bloque del diff desde el menú «Bloques»; reordenar commits y operar el árbol de Carpetas con
+  acciones de accesibilidad, sin arrastrar ni hacer doble clic.
+- Corregido: al elegir un archivo el diff podía quedarse cargando aunque ya hubiera llegado.
+- Subir, bajar y buscar cambios ya no se cortan a los 2 minutos en repos grandes o enlaces lentos (30 minutos).
+- Refresco más liviano: las ediciones de archivos sólo releen el estado, y el snapshot usa menos procesos de Git.
+
 ## 1.0.7 · 2026-11-11
 
 - **Temas:** Butake Git y Drácula en claro y oscuro (o según el sistema), aplicados a toda la app: acento,

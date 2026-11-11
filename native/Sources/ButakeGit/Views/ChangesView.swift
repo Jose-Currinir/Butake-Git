@@ -4,6 +4,9 @@ struct ChangesView: View {
     @Bindable var store: WorkspaceStore
     @State private var amend = false
     @State private var editing: FileEditorTarget?
+    /// Each panel can be folded down to its header; the choice is remembered.
+    @AppStorage("changesUnstagedCollapsed") private var unstagedCollapsed = false
+    @AppStorage("changesStagedCollapsed") private var stagedCollapsed = false
     var body: some View {
         HSplitView {
             VStack(spacing: 0) {
@@ -12,24 +15,41 @@ struct ChangesView: View {
                 if store.route == .review {
                     ChangeTreePane(store: store, onResolve: { store.resolving = $0 }).frame(maxHeight: .infinity)
                 } else {
-                    VSplitView {
-                        FileGroupPane(store: store, title: L("unstaged"), files: store.filteredChanges(staged: false), staged: false, onResolve: { store.resolving = $0 })
-                            .frame(minHeight: 105, idealHeight: 260)
-                        FileGroupPane(store: store, title: L("staged"), files: store.filteredChanges(staged: true), staged: true, onResolve: { store.resolving = $0 })
-                            .frame(minHeight: 100, idealHeight: 170)
-                    }.frame(maxHeight: .infinity)
+                    let unstaged = FileGroupPane(store: store, title: L("unstaged"), files: store.filteredChanges(staged: false), staged: false, collapsed: $unstagedCollapsed, onResolve: { store.resolving = $0 })
+                    let staged = FileGroupPane(store: store, title: L("staged"), files: store.filteredChanges(staged: true), staged: true, collapsed: $stagedCollapsed, onResolve: { store.resolving = $0 })
+                    if unstagedCollapsed || stagedCollapsed {
+                        // A folded panel is just its header: the other one takes the room (no divider to drag).
+                        VStack(spacing: 0) {
+                            unstaged.frame(maxHeight: unstagedCollapsed ? nil : .infinity)
+                            Divider()
+                            staged.frame(maxHeight: stagedCollapsed ? nil : .infinity)
+                            if unstagedCollapsed && stagedCollapsed { Divider(); Spacer(minLength: 0) }
+                        }.frame(maxHeight: .infinity).background(Brand.surface)
+                    } else {
+                        VSplitView {
+                            unstaged.frame(minHeight: 105, idealHeight: 260)
+                            staged.frame(minHeight: 100, idealHeight: 170)
+                        }.frame(maxHeight: .infinity)
+                    }
                 }
                 Divider()
                 CommitComposer(store: store, amend: $amend, onCommit: createCommit)
             }.frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
             VStack(spacing: 0) {
-                HStack { Label(store.selectedFile?.path ?? L("diff"), systemImage: "doc.text").font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).contentTransition(.opacity); Spacer(); if let file = store.selectedFile, let stats = store.stats(for: file, staged: store.stagedSelection) { StatsBadge(stats: stats) }; if let file = store.selectedFile, !file.conflict { Button { editing = FileEditorTarget(path: file.path) } label: { Label(L("editFile"), systemImage: "pencil") }.controlSize(.small).disabled(!store.canWrite) }; if store.selectedFile != nil { Text(L(store.stagedSelection ? "staged" : "unstaged")).font(.caption2).foregroundStyle(.secondary) } }.padding(.horizontal, 16).frame(height: 39).background(.bar)
+                HStack { Label(store.selectedFile?.path ?? L("diff"), systemImage: "doc.text").font(.ui(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).contentTransition(.opacity); Spacer(); if let file = store.selectedFile, let stats = store.stats(for: file, staged: store.stagedSelection) { StatsBadge(stats: stats) }; if store.selectedFile != nil, case let hunks = store.diff.components(separatedBy: "\n@@ ").count - 1 + (store.diff.hasPrefix("@@ ") ? 1 : 0), hunks > 0 {
+                    // Same as the diff's right-click «Preparar bloque», reachable without a pointer gesture.
+                    Menu(L("hunks")) {
+                        ForEach(0..<min(hunks, 60), id: \.self) { index in
+                            Button("\(L(store.stagedSelection ? "hunkUnstage" : "hunkStage")) \(index + 1)") { store.stageHunk(index) }.accessibilityIdentifier("diff.hunk.\(index + 1)")
+                        }
+                    }.controlSize(.small).fixedSize().disabled(store.busy || store.terminalActive).accessibilityIdentifier("diff.hunks")
+                }; if let file = store.selectedFile, !file.conflict { Button { editing = FileEditorTarget(path: file.path) } label: { Label(L("editFile"), systemImage: "pencil") }.controlSize(.small).disabled(!store.canWrite) }; if store.selectedFile != nil { Text(L(store.stagedSelection ? "staged" : "unstaged")).font(.uiCaption2).foregroundStyle(.secondary) } }.padding(.horizontal, 16).frame(height: 39).background(Brand.bar)
                 Divider()
                 if store.selectedFile != nil && store.diff.isEmpty { Spinner(size: 14).frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity) }
                 else if store.selectedFile != nil { DiffView(text: store.diff, path: store.selectedFile?.path, onHunk: store.busy || store.terminalActive ? nil : { store.stageHunk($0) }, hunkTitle: L(store.stagedSelection ? "hunkUnstage" : "hunkStage")) }
                 else { ContentUnavailableView(L(store.files.isEmpty == true ? "clean" : "diff"), systemImage: store.files.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass", description: Text(L(store.files.isEmpty == true ? "cleanDetail" : "chooseFile"))).frame(maxHeight: .infinity) }
             }.frame(minWidth: 310).animation(.easeOut(duration: 0.15), value: store.diff.isEmpty)
-        }.sheet(item: $editing) { target in FileEditorView(store: store, path: target.path) }
+        }.sheet(item: $editing) { target in FileEditorView(store: store, path: target.path).themedSheet() }
     }
     private func createCommit() {
         if amend { Task { await store.prepare("commit", arguments: "--amend -m \(shellQuote(store.message))") } }
@@ -37,7 +57,7 @@ struct ChangesView: View {
     }
 }
 private struct FileGroupPane: View {
-    let store: WorkspaceStore; let title: String; let files: [ChangedFile]; let staged: Bool; let onResolve: (ChangedFile) -> Void
+    let store: WorkspaceStore; let title: String; let files: [ChangedFile]; let staged: Bool; @Binding var collapsed: Bool; let onResolve: (ChangedFile) -> Void
     /// SwiftUI's List walks every element on each update; with thousands of files (an agent's burst) each refresh
     /// cost ~70 ms. The list shows the first rows and the rest on request; search and "stage all" still cover all.
     static let window = 150
@@ -60,10 +80,19 @@ private struct FileGroupPane: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: staged ? "checkmark.circle.fill" : "circle.dashed").foregroundStyle(staged ? Brand.accent : Color.secondary).symbolEffect(.bounce, value: files.count < WorkspaceStore.animationLimit ? files.count : 0)
-                Text(title).font(.system(size: 11, weight: .semibold))
-                Text("\(files.count)").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule()).countTransition(files.count)
-                Spacer(minLength: 0)
+                // The title side of the header folds the panel down to this bar, or opens it again.
+                Button { withAnimation(.snappy(duration: 0.2)) { collapsed.toggle() } } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.right").font(.ui(size: 9, weight: .bold)).foregroundStyle(.secondary).rotationEffect(.degrees(collapsed ? 0 : 90)).frame(width: 10)
+                        Image(systemName: staged ? "checkmark.circle.fill" : "circle.dashed").foregroundStyle(staged ? Brand.accent : Color.secondary).symbolEffect(.bounce, value: files.count < WorkspaceStore.animationLimit ? files.count : 0)
+                        Text(title).font(.ui(size: 11, weight: .semibold))
+                        Text("\(files.count)").font(.ui(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule()).countTransition(files.count)
+                        Spacer(minLength: 0)
+                    }.frame(maxHeight: .infinity).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).help(L(collapsed ? "expandSection" : "collapseSection"))
+                .accessibilityIdentifier(staged ? "changes.toggleStaged" : "changes.toggleUnstaged")
+                .accessibilityLabel("\(title), \(files.count)").accessibilityValue(L(collapsed ? "collapsed" : "expanded"))
                 if !files.isEmpty { GroupTotals(store: store, files: files, staged: staged).transition(.opacity) }
                 if !staged {
                     Button { store.discardFiles(pickedFiles) } label: { Image(systemName: "arrow.uturn.backward") }
@@ -73,10 +102,11 @@ private struct FileGroupPane: View {
                         .disabled(picked.isEmpty || store.busy || store.terminalActive)
                 }
                 Button { store.stageFiles(files, staged: staged) } label: { Image(systemName: staged ? "minus" : "plus") }.buttonStyle(.borderless).frame(width: 22, height: 22).help(L(staged ? "unstageAll" : "stageAll")).accessibilityLabel(L(staged ? "unstageAll" : "stageAll")).accessibilityIdentifier(staged ? "changes.unstageAll" : "changes.stageAll").disabled(files.isEmpty || store.busy || store.terminalActive)
-            }.padding(.horizontal, 13).frame(height: 35).background(.bar).animation(files.count < WorkspaceStore.animationLimit ? .snappy : nil, value: files.count)
-            Divider()
-            if files.isEmpty { VStack(spacing: 5) { Image(systemName: staged ? "tray" : "checkmark").font(.system(size: 17, weight: .light)).foregroundStyle(.tertiary); Text(L(staged ? "noStaged" : "noUnstaged")).font(.caption2).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity.combined(with: .scale(scale: 0.96))) }
+            }.padding(.horizontal, 13).frame(height: 35).background(Brand.bar).animation(files.count < WorkspaceStore.animationLimit ? .snappy : nil, value: files.count)
+            if collapsed { EmptyView() }
+            else if files.isEmpty { Divider(); VStack(spacing: 5) { Image(systemName: staged ? "tray" : "checkmark").font(.ui(size: 17, weight: .light)).foregroundStyle(.tertiary); Text(L(staged ? "noStaged" : "noUnstaged")).font(.uiCaption2).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity.combined(with: .scale(scale: 0.96))) }
             else {
+                Divider()
                 List(selection: selection) {
                     ForEach(visible) { file in
                         FileRow(store: store, file: file, staged: staged, onAccent: listFocused && windowState == .key && picked.contains(file.path))
@@ -86,7 +116,7 @@ private struct FileGroupPane: View {
                     if visible.count < files.count {
                         Button { showAll = true } label: {
                             Label(String(format: L("showRemainingFiles"), files.count - visible.count), systemImage: "chevron.down.circle")
-                                .font(.system(size: 11, weight: .medium)).frame(maxWidth: .infinity)
+                                .font(.ui(size: 11, weight: .medium)).frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderless).padding(.vertical, 6).selectionDisabled()
                         .accessibilityIdentifier(staged ? "changes.showAllStaged" : "changes.showAllUnstaged")
@@ -180,17 +210,17 @@ private struct FileRow: View {
     var color: Color { file.kind.color }
     var body: some View {
         HStack(spacing: 8) {
-            Group { if file.conflict { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning).font(.system(size: 12)) } else { FileTypeIcon(path: file.path, size: 15, monochrome: onAccent) } }.frame(width: 16)
-            VStack(alignment: .leading, spacing: 3) { Text(file.name).font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).strikethrough(code == "D", color: .secondary); if file.kind == .renamed, let original = file.originalPath { Text(String(format: L("movedFrom"), original)).font(.system(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head) } else if !file.directory.isEmpty { Text(file.directory).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) } }
+            Group { if file.conflict { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning).font(.ui(size: 12)) } else { FileTypeIcon(path: file.path, size: 15, monochrome: onAccent) } }.frame(width: 16)
+            VStack(alignment: .leading, spacing: 3) { Text(file.name).font(.ui(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).strikethrough(code == "D", color: .secondary); if file.kind == .renamed, let original = file.originalPath { Text(String(format: L("movedFrom"), original)).font(.ui(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head) } else if !file.directory.isEmpty { Text(file.directory).font(.ui(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) } }
             Spacer(minLength: 3)
             if let stats = store.statBox(file, staged: staged).value, !hovering { StatsBadge(stats: stats, inverted: onAccent).transition(.opacity) }
-            else if file.index == "?" && !hovering { Text(L("newFile")).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary) }
+            else if file.index == "?" && !hovering { Text(L("newFile")).font(.ui(size: 9, weight: .medium)).foregroundStyle(.secondary) }
             if hovering && !staged && !file.conflict {
-                Button { store.discard(file) } label: { Image(systemName: "arrow.uturn.backward.circle").font(.system(size: 13)) }.buttonStyle(.borderless).foregroundStyle(onAccent ? Color.white : Color.secondary).help(L("discardChanges")).disabled(store.busy || store.terminalActive)
+                Button { store.discard(file) } label: { Image(systemName: "arrow.uturn.backward.circle").font(.ui(size: 13)) }.buttonStyle(.borderless).foregroundStyle(onAccent ? Color.white : Color.secondary).help(L("discardChanges")).disabled(store.busy || store.terminalActive)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
-            Text(code).font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(onAccent ? Color.white : color).frame(width: 16, height: 16).background(onAccent ? Color.white.opacity(0.22) : color.opacity(0.12), in: RoundedRectangle(cornerRadius: 4)).help(file.kind.title)
-            Button { store.action(staged ? "unstage" : "stage", value: file.path) } label: { Image(systemName: staged ? "minus.circle.fill" : "plus.circle.fill").font(.system(size: 14)).symbolRenderingMode(.hierarchical) }.buttonStyle(.borderless).foregroundStyle(onAccent ? Color.white : hovering ? (staged ? Brand.warning : Brand.accent) : Color.secondary).scaleEffect(hovering ? 1.1 : 1).help(L(staged ? "unstage" : "stage")).disabled(store.busy || store.terminalActive || file.conflict)
+            Text(code).font(.ui(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(onAccent ? Color.white : color).frame(width: 16, height: 16).background(onAccent ? Color.white.opacity(0.22) : color.opacity(0.12), in: RoundedRectangle(cornerRadius: 4)).help(file.kind.title)
+            Button { store.action(staged ? "unstage" : "stage", value: file.path) } label: { Image(systemName: staged ? "minus.circle.fill" : "plus.circle.fill").font(.ui(size: 14)).symbolRenderingMode(.hierarchical) }.buttonStyle(.borderless).foregroundStyle(onAccent ? Color.white : hovering ? (staged ? Brand.warning : Brand.accent) : Color.secondary).scaleEffect(hovering ? 1.1 : 1).help(L(staged ? "unstage" : "stage")).disabled(store.busy || store.terminalActive || file.conflict)
         }
         .padding(.vertical, 3).contentShape(Rectangle())
         .onHover { hover in withAnimation(.easeOut(duration: 0.14)) { hovering = hover } }
@@ -235,34 +265,34 @@ private struct CommitComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(L("commit")).font(.headline)
+                Text(L("commit")).font(.uiHeadline)
                 Spacer()
                 Menu {
                     ForEach(CommitType.all, id: \.prefix) { type in
                         Button { applyType(type.prefix) } label: { Label("\(type.prefix) · \(L("ctype_" + type.prefix))", systemImage: type.icon) }
                     }
-                } label: { Label(currentType ?? L("commitType"), systemImage: "tag").font(.system(size: 10.5, weight: .medium)) }
+                } label: { Label(currentType ?? L("commitType"), systemImage: "tag").font(.ui(size: 10.5, weight: .medium)) }
                 .menuStyle(.borderlessButton).fixedSize().help(L("commitTypeHelp")).accessibilityIdentifier("commit.type")
-                Text("\(subject.count)/72").font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(subject.count > 72 ? Brand.warning : subject.count > 50 ? Color.secondary : Color.secondary.opacity(0.6)).contentTransition(.numericText()).help(L("subjectLengthHelp"))
+                Text("\(subject.count)/72").font(.ui(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(subject.count > 72 ? Brand.warning : subject.count > 50 ? Color.secondary : Color.secondary.opacity(0.6)).contentTransition(.numericText()).help(L("subjectLengthHelp"))
             }
             ZStack(alignment: .topLeading) {
-                if store.message.isEmpty { Text(L("messagePlaceholder")).font(.system(size: 12)).foregroundStyle(.tertiary).padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false) }
-                TextEditor(text: $store.message).font(.system(size: 12)).scrollContentBackground(.hidden).focused($focused).padding(6).accessibilityLabel(L("message")).accessibilityIdentifier("commit.message")
+                if store.message.isEmpty { Text(L("messagePlaceholder")).font(.ui(size: 12)).foregroundStyle(.tertiary).padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false) }
+                TextEditor(text: $store.message).font(.ui(size: 12)).scrollContentBackground(.hidden).focused($focused).padding(6).accessibilityLabel(L("message")).accessibilityIdentifier("commit.message")
             }
             .frame(height: 82)
             .background(.quaternary.opacity(focused ? 0.25 : 0.45), in: RoundedRectangle(cornerRadius: 7))
             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(focused ? Brand.accent.opacity(0.7) : Color.secondary.opacity(0.2), lineWidth: focused ? 1.5 : 1))
             .animation(.easeOut(duration: 0.15), value: focused)
-            if subject.count > 72 { Label(L("subjectTooLong"), systemImage: "exclamationmark.circle").font(.caption2).foregroundStyle(Brand.warning).transition(.opacity.combined(with: .move(edge: .top))) }
+            if subject.count > 72 { Label(L("subjectTooLong"), systemImage: "exclamationmark.circle").font(.uiCaption2).foregroundStyle(Brand.warning).transition(.opacity.combined(with: .move(edge: .top))) }
             HStack {
-                Toggle(L("amend"), isOn: $amend).font(.caption).controlSize(.small).accessibilityIdentifier("commit.amend")
+                Toggle(L("amend"), isOn: $amend).font(.uiCaption).controlSize(.small).accessibilityIdentifier("commit.amend")
                     .help(L("amendHelp"))
                     .onChange(of: amend) { _, on in
                         if on, store.message.isEmpty, let head = store.repository?.headHash, let last = store.repository?.commits.first(where: { $0.hash == head }) { store.message = last.subject }
                     }
-                Spacer(); Text("⌘↩").font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                Spacer(); Text("⌘↩").font(.uiCaption2.monospaced()).foregroundStyle(.tertiary)
             }
-            if let reason = blockedReason { Label(reason, systemImage: "info.circle").font(.caption2).foregroundStyle(.secondary).transition(.opacity) }
+            if let reason = blockedReason { Label(reason, systemImage: "info.circle").font(.uiCaption2).foregroundStyle(.secondary).transition(.opacity) }
             Button(action: onCommit) {
                 HStack(spacing: 6) {
                     Image(systemName: amend ? "arrow.triangle.2.circlepath" : "checkmark").contentTransition(.symbolEffect(.replace))
@@ -283,8 +313,8 @@ private struct ConflictsPane: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.warning).symbolEffect(.pulse)
-                Text(L("conflicts")).font(.system(size: 11, weight: .semibold))
-                Text("\(files.count)").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Brand.warning).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.warning.opacity(0.15), in: Capsule())
+                Text(L("conflicts")).font(.ui(size: 11, weight: .semibold))
+                Text("\(files.count)").font(.ui(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Brand.warning).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.warning.opacity(0.15), in: Capsule())
                 Spacer()
                 Button(L("resolveNow")) { store.resolveNextConflict() }.controlSize(.small).buttonStyle(.borderedProminent).tint(Brand.warning).accessibilityIdentifier("conflicts.resolveNext")
             }
@@ -292,10 +322,10 @@ private struct ConflictsPane: View {
                 Button { store.resolving = file } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.triangle.merge").foregroundStyle(Brand.warning).frame(width: 15)
-                        VStack(alignment: .leading, spacing: 1) { Text(file.name).font(.system(size: 11, weight: .medium)).lineLimit(1); if file.kind == .renamed, let original = file.originalPath { Text(String(format: L("movedFrom"), original)).font(.system(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head) } else if !file.directory.isEmpty { Text(file.directory).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) } }
+                        VStack(alignment: .leading, spacing: 1) { Text(file.name).font(.ui(size: 11, weight: .medium)).lineLimit(1); if file.kind == .renamed, let original = file.originalPath { Text(String(format: L("movedFrom"), original)).font(.ui(size: 9)).foregroundStyle(Brand.special).lineLimit(1).truncationMode(.head) } else if !file.directory.isEmpty { Text(file.directory).font(.ui(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) } }
                         Spacer()
-                        Text(L("resolveConflict")).font(.system(size: 10)).foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                        Text(L("resolveConflict")).font(.ui(size: 10)).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.ui(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
                     }.padding(.vertical, 4).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("\(L("resolveConflict")) \(file.path)").accessibilityIdentifier("conflict.\(file.path)")
             }

@@ -22,6 +22,8 @@ enum Brand {
     static var textNS: NSColor { theme.text?.ns ?? .textColor }
     /// Whether the theme paints its own backgrounds (lists then hide the system background).
     static var customBackgrounds: Bool { theme.surface != nil }
+    /// Header and toolbar strips: the system bar material, or the theme's window background when it has one.
+    static var bar: AnyShapeStyle { customBackgrounds ? AnyShapeStyle(background) : AnyShapeStyle(.bar) }
     static var logo: NSImage? { Bundle.module.url(forResource: "ButakeLogo", withExtension: "png").flatMap(NSImage.init(contentsOf:)) }
 }
 struct BrandMark: View {
@@ -34,4 +36,13 @@ struct BrandMark: View {
         .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: size * 0.24))
         .accessibilityLabel("Butake")
     }
+}
+
+extension View {
+    /// Lists, forms and tables show the theme's surface instead of the system background.
+    func themedScroll() -> some View { scrollContentBackground(Brand.customBackgrounds ? .hidden : .automatic) }
+    /// Sheets, popovers and secondary windows take the theme's background and accent like the main window.
+    func themedSheet() -> some View { background { if Brand.customBackgrounds { Brand.background.ignoresSafeArea() } }.tint(Brand.accent).scaledText() }
+    /// Text without an explicit font (sidebar rows, plain labels) follows the size chosen with ⌘+ / ⌘−.
+    @MainActor func scaledText() -> some View { font(TextScale.shared.factor == 1 ? nil : Font.ui(size: 13)) }
 }

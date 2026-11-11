@@ -19,12 +19,12 @@ struct HistoryView: View {
                 Spacer()
                 Text(L("historyKeys")).foregroundStyle(.tertiary)
                 Text("\(commits.count) \(L("commits"))").foregroundStyle(.secondary).contentTransition(.numericText(value: Double(commits.count))).animation(.snappy, value: commits.count)
-            }.font(.caption).padding(.horizontal, 20).frame(height: 40).background(.bar)
+            }.font(.uiCaption).padding(.horizontal, 20).frame(height: 40).background(Brand.bar)
             Divider()
             if let last = store.lastRewrite, last.branch == store.repository?.branch {
                 HStack(spacing: 10) {
                     Image(systemName: "wand.and.stars").foregroundStyle(Brand.accent)
-                    Text(L("rewriteBanner")).font(.caption.weight(.medium))
+                    Text(L("rewriteBanner")).font(.uiCaption.weight(.medium))
                     Spacer()
                     Button(L("undo")) { store.undoRewrite() }.controlSize(.small).accessibilityIdentifier("history.undoRewrite")
                     Button { withAnimation(.snappy) { store.lastRewrite = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).controlSize(.small).accessibilityLabel(L("close"))
@@ -143,15 +143,15 @@ private struct CommitRow: View {
             HStack(spacing: 12) {
                 AuthorAvatar(name: commit.author, size: 24, tooltip: false)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(commit.subject).font(.system(size: 12, weight: selected ? .semibold : .medium)).lineLimit(1)
+                    Text(commit.subject).font(.ui(size: 12, weight: selected ? .semibold : .medium)).lineLimit(1)
                     HStack(spacing: 5) {
                         if let mark = store.syncMarks[commit.hash] { SyncChip(mark: mark) }
                         ForEach(CommitReference.parse(commit.refs, localBranches: locals).prefix(4)) { ReferenceChip(reference: $0) }
-                        Text(commit.author).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(commit.author).font(.ui(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 10)
-                VStack(alignment: .trailing, spacing: 6) { Text(commit.shortHash).font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.accent); Text(RelativeDateCache.shared.text(for: commit.date)).font(.system(size: 9)).foregroundStyle(.tertiary).lineLimit(1) }
+                VStack(alignment: .trailing, spacing: 6) { Text(commit.shortHash).font(.ui(size: 10, design: .monospaced)).foregroundStyle(Brand.accent); Text(RelativeDateCache.shared.text(for: commit.date)).font(.ui(size: 9)).foregroundStyle(.tertiary).lineLimit(1) }
             }
         }
         .padding(.horizontal, 16).frame(height: 57).contentShape(Rectangle())
@@ -189,18 +189,18 @@ struct BranchHoverCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: store.isProtected(branch ?? "") ? "lock.fill" : "arrow.triangle.branch").foregroundStyle(Brand.accent)
-                Text(branch ?? L("unlabeledLane")).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                if info?.current == true { Text(L("current")).font(.system(size: 9, weight: .semibold)).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.accent.opacity(0.14), in: Capsule()) }
+                Text(branch ?? L("unlabeledLane")).font(.ui(size: 13, weight: .semibold)).lineLimit(1)
+                if info?.current == true { Text(L("current")).font(.ui(size: 9, weight: .semibold)).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.accent.opacity(0.14), in: Capsule()) }
             }
-            if let upstream = info?.upstream, !upstream.isEmpty { Label(upstream, systemImage: "network").font(.caption).foregroundStyle(.secondary) }
+            if let upstream = info?.upstream, !upstream.isEmpty { Label(upstream, systemImage: "network").font(.uiCaption).foregroundStyle(.secondary) }
             if !refs.isEmpty { FlowChips(references: refs) }
             Divider()
             HStack(alignment: .top, spacing: 10) {
                 AuthorAvatar(name: commit.author, size: 28)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(commit.subject).font(.system(size: 12, weight: .medium)).lineLimit(3)
-                    Text("\(commit.author) · \(commit.date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                    Text(commit.parents.count > 1 ? "\(commit.shortHash) · \(L("mergeCommit"))" : commit.shortHash).font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.accent)
+                    Text(commit.subject).font(.ui(size: 12, weight: .medium)).lineLimit(3)
+                    Text("\(commit.author) · \(commit.date.formatted(date: .abbreviated, time: .shortened))").font(.uiCaption).foregroundStyle(.secondary)
+                    Text(commit.parents.count > 1 ? "\(commit.shortHash) · \(L("mergeCommit"))" : commit.shortHash).font(.ui(size: 10, design: .monospaced)).foregroundStyle(Brand.accent)
                 }
             }
         }.padding(14).frame(width: 300, alignment: .leading)
@@ -222,7 +222,7 @@ struct ReferenceChip: View {
         case .tag: ("tag.fill", Brand.warning)
         }
         Label(reference.name, systemImage: icon).labelStyle(ChipLabelStyle())
-            .font(.system(size: 9, weight: reference.kind == .head ? .bold : .medium)).foregroundStyle(color)
+            .font(.ui(size: 9, weight: reference.kind == .head ? .bold : .medium)).foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(reference.kind == .head ? 0.18 : 0.10), in: Capsule())
             .overlay { if reference.kind == .head { Capsule().strokeBorder(color.opacity(0.5), lineWidth: 0.5) } }
@@ -230,7 +230,7 @@ struct ReferenceChip: View {
     }
 }
 private struct ChipLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View { HStack(spacing: 3) { configuration.icon.font(.system(size: 7)); configuration.title } }
+    func makeBody(configuration: Configuration) -> some View { HStack(spacing: 3) { configuration.icon.font(.ui(size: 7)); configuration.title } }
 }
 struct AuthorAvatar: View {
     let name: String
@@ -243,7 +243,7 @@ struct AuthorAvatar: View {
         return Brand.graph[abs(hash) % Brand.graph.count]
     }
     var body: some View {
-        Text(initials.isEmpty ? "?" : initials).font(.system(size: size * 0.38, weight: .semibold, design: .rounded)).foregroundStyle(color)
+        Text(initials.isEmpty ? "?" : initials).font(.ui(size: size * 0.38, weight: .semibold, design: .rounded)).foregroundStyle(color)
             .frame(width: size, height: size).background(color.opacity(0.16), in: Circle())
             .overlay(Circle().strokeBorder(color.opacity(0.35), lineWidth: 0.5))
             .help(tooltip ? name : "").accessibilityHidden(true)
@@ -291,18 +291,18 @@ struct CommitInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HStack { Text(L("commitDetails")).font(.headline); Spacer(); InspectorCloseButton(store: store) }
+                HStack { Text(L("commitDetails")).font(.uiHeadline); Spacer(); InspectorCloseButton(store: store) }
                 if let commit = store.selectedCommit {
                     VStack(alignment: .leading, spacing: 18) {
                         HStack(alignment: .top, spacing: 10) {
                             AuthorAvatar(name: commit.author, size: 34)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(commit.subject).font(.system(size: 15, weight: .semibold)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                                Text("\(commit.author) · \(commit.date.formatted(.relative(presentation: .named)))").font(.caption).foregroundStyle(.secondary)
+                                Text(commit.subject).font(.ui(size: 15, weight: .semibold)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                Text("\(commit.author) · \(commit.date.formatted(.relative(presentation: .named)))").font(.uiCaption).foregroundStyle(.secondary)
                             }
                         }
-                        if !body_.isEmpty { Text(body_).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8)) }
-                        HStack { Text(commit.hash).font(.system(size: 10, design: .monospaced)).foregroundStyle(Brand.accent).lineLimit(1).truncationMode(.middle); Spacer(); CopyIconButton(store: store, text: commit.hash, help: L("copyHash")) }
+                        if !body_.isEmpty { Text(body_).font(.ui(size: 11)).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8)) }
+                        HStack { Text(commit.hash).font(.ui(size: 10, design: .monospaced)).foregroundStyle(Brand.accent).lineLimit(1).truncationMode(.middle); Spacer(); CopyIconButton(store: store, text: commit.hash, help: L("copyHash")) }
                         let refs = CommitReference.parse(commit.refs, localBranches: store.refs.localBranches)
                         if !refs.isEmpty { HStack(spacing: 4) { ForEach(refs.prefix(5)) { ref in Button { store.search = ref.name } label: { ReferenceChip(reference: ref) }.buttonStyle(.plain).help(L("filterHistory")) } } }
                         CommitActions(store: store, commit: commit)
@@ -310,14 +310,14 @@ struct CommitInspector: View {
                         VStack(alignment: .leading, spacing: 14) {
                             InspectorField(label: L("date"), value: commit.date.formatted(date: .abbreviated, time: .shortened))
                             VStack(alignment: .leading, spacing: 5) {
-                                Text(L("parents")).font(.caption2).foregroundStyle(.secondary)
-                                if commit.parents.isEmpty { Text(L("rootCommit")).font(.system(size: 11)) }
-                                HStack(spacing: 6) { ForEach(commit.parents, id: \.self) { parent in Button { store.selectCommit(hash: parent) } label: { Label(String(parent.prefix(7)), systemImage: "arrow.down.right").font(.system(size: 10, design: .monospaced)) }.buttonStyle(.link).help(L("goToParent")).accessibilityLabel("\(L("goToParent")) \(parent.prefix(7))").accessibilityIdentifier("inspector.parent.\(parent.prefix(7))") } }
+                                Text(L("parents")).font(.uiCaption2).foregroundStyle(.secondary)
+                                if commit.parents.isEmpty { Text(L("rootCommit")).font(.ui(size: 11)) }
+                                HStack(spacing: 6) { ForEach(commit.parents, id: \.self) { parent in Button { store.selectCommit(hash: parent) } label: { Label(String(parent.prefix(7)), systemImage: "arrow.down.right").font(.ui(size: 10, design: .monospaced)) }.buttonStyle(.link).help(L("goToParent")).accessibilityLabel("\(L("goToParent")) \(parent.prefix(7))").accessibilityIdentifier("inspector.parent.\(parent.prefix(7))") } }
                             }
                         }
                         Divider()
                         HStack {
-                            Label(L("files"), systemImage: "doc.on.doc").font(.caption.weight(.semibold))
+                            Label(L("files"), systemImage: "doc.on.doc").font(.uiCaption.weight(.semibold))
                             Spacer()
                             let adds = files.compactMap(\.stats.additions).reduce(0, +), dels = files.compactMap(\.stats.deletions).reduce(0, +)
                             if !files.isEmpty { StatsBadge(stats: LineStats(additions: adds, deletions: dels)) }
@@ -331,7 +331,7 @@ struct CommitInspector: View {
                         if files.count > fileLimit {
                             Button { fileLimit += 400 } label: {
                                 Label(String(format: L("showMoreFiles"), min(400, files.count - fileLimit), files.count - fileLimit), systemImage: "chevron.down.circle")
-                                    .font(.system(size: 11, weight: .medium)).frame(maxWidth: .infinity)
+                                    .font(.ui(size: 11, weight: .medium)).frame(maxWidth: .infinity)
                             }.buttonStyle(.borderless).padding(.vertical, 4).accessibilityIdentifier("inspector.moreFiles")
                         }
                         Divider()
@@ -390,14 +390,14 @@ private struct CommitFileRow: View {
             HStack(spacing: 7) {
                 FileTypeIcon(path: file.path, size: 16)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text((file.path as NSString).lastPathComponent).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                    Text((file.path as NSString).lastPathComponent).font(.ui(size: 11, weight: .medium)).lineLimit(1)
                     let directory = (file.path as NSString).deletingLastPathComponent
-                    if !directory.isEmpty { Text(directory).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
+                    if !directory.isEmpty { Text(directory).font(.ui(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
                 }
                 Spacer(minLength: 4)
                 ChangeKindBadge(kind: kind, compact: true)
                 StatsBadge(stats: file.stats)
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary).opacity(hovering ? 1 : 0)
+                Image(systemName: "chevron.right").font(.ui(size: 9, weight: .semibold)).foregroundStyle(.tertiary).opacity(hovering ? 1 : 0)
             }.padding(.horizontal, 6).padding(.vertical, 5).contentShape(Rectangle())
             .background(hovering ? Color.primary.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 6))
         }.buttonStyle(.plain).help(file.path)
@@ -417,7 +417,7 @@ struct StatsBadge: View {
                 if let additions = stats.additions, additions > 0 { Text("+\(additions)").foregroundStyle(inverted ? Color.white : Brand.addition) }
                 if let deletions = stats.deletions, deletions > 0 { Text("−\(deletions)").foregroundStyle(inverted ? Color.white.opacity(0.85) : Brand.danger) }
             }
-        }.font(.system(size: 9, weight: .semibold, design: .monospaced)).fixedSize()
+        }.font(.ui(size: 9, weight: .semibold, design: .monospaced)).fixedSize()
         .accessibilityElement(children: .ignore).accessibilityLabel(description)
     }
     private var description: String { stats.binary ? L("binary") : String(format: L("linesChanged"), stats.additions ?? 0, stats.deletions ?? 0) }
@@ -447,15 +447,15 @@ private struct CommitActions: View {
                     ActionTile(id: "inspector.cherryPick", icon: "arrow.right.doc.on.clipboard", title: L("cherry_pick"), help: readOnly ? L("actionReadOnly") : inHead ? L("cherryPickInHead") : L("cherryPickHelp")) { store.action("cherry_pick", value: commit.hash, confirm: true) }.disabled(readOnly || inHead)
                 }
             }
-            if isHead { Label(L("isHeadNote"), systemImage: "location.fill").font(.caption2).foregroundStyle(.secondary) }
-            else if inHead { Label(L("inHeadNote"), systemImage: "checkmark.circle").font(.caption2).foregroundStyle(.secondary) }
-            else { Label(L("notInHeadNote"), systemImage: "arrow.triangle.branch").font(.caption2).foregroundStyle(.secondary) }
-            if store.onProtectedMain { Label(L("editorProtected"), systemImage: "lock").font(.caption2).foregroundStyle(Brand.warning) }
+            if isHead { Label(L("isHeadNote"), systemImage: "location.fill").font(.uiCaption2).foregroundStyle(.secondary) }
+            else if inHead { Label(L("inHeadNote"), systemImage: "checkmark.circle").font(.uiCaption2).foregroundStyle(.secondary) }
+            else { Label(L("notInHeadNote"), systemImage: "arrow.triangle.branch").font(.uiCaption2).foregroundStyle(.secondary) }
+            if store.onProtectedMain { Label(L("editorProtected"), systemImage: "lock").font(.uiCaption2).foregroundStyle(Brand.warning) }
         }
         .popover(isPresented: $naming, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(L("branchHere")).font(.headline)
-                Text("\(L("startPoint")): \(commit.shortHash)").font(.caption).foregroundStyle(.secondary)
+                Text(L("branchHere")).font(.uiHeadline)
+                Text("\(L("startPoint")): \(commit.shortHash)").font(.uiCaption).foregroundStyle(.secondary)
                 TextField(L("branchName"), text: $branchName).textFieldStyle(.roundedBorder).frame(width: 240).onSubmit(create)
                 HStack { Spacer(); Button(L("cancel")) { naming = false }; Button(L("create"), action: create).buttonStyle(.borderedProminent).disabled(branchName.trimmingCharacters(in: .whitespaces).isEmpty) }
             }.padding(14)
@@ -475,8 +475,8 @@ private struct ActionTile: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .medium)).frame(width: 14).contentTransition(.symbolEffect(.replace))
-                Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1).minimumScaleFactor(0.85)
+                Image(systemName: icon).font(.ui(size: 11, weight: .medium)).frame(width: 14).contentTransition(.symbolEffect(.replace))
+                Text(title).font(.ui(size: 11, weight: .medium)).lineLimit(1).minimumScaleFactor(0.85)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 9).frame(maxWidth: .infinity, minHeight: 28)
@@ -490,7 +490,7 @@ private struct ActionTile: View {
 }
 private struct InspectorField: View {
     let label: String; let value: String
-    var body: some View { VStack(alignment: .leading, spacing: 5) { Text(label).font(.caption2).foregroundStyle(.secondary); Text(value.isEmpty ? "—" : value).font(.system(size: 11)).textSelection(.enabled) } }
+    var body: some View { VStack(alignment: .leading, spacing: 5) { Text(label).font(.uiCaption2).foregroundStyle(.secondary); Text(value.isEmpty ? "—" : value).font(.ui(size: 11)).textSelection(.enabled) } }
 }
 
 /// Close control with an explicit hit area; a bare plain-style glyph was too easy to miss.
@@ -499,7 +499,7 @@ struct InspectorCloseButton: View {
     @State private var hovering = false
     var body: some View {
         Button { withAnimation(.smooth(duration: 0.25)) { store.showInspector = false } } label: {
-            Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
+            Image(systemName: "xmark").font(.ui(size: 11, weight: .semibold))
                 .foregroundStyle(hovering ? Color.primary : Color.secondary)
                 .frame(width: 26, height: 26)
                 .background(hovering ? Color.primary.opacity(0.08) : .clear, in: Circle())
@@ -520,7 +520,7 @@ struct CopyIconButton: View {
             withAnimation(.snappy) { copied = true }
             Task { try? await Task.sleep(for: .seconds(1.6)); withAnimation(.easeOut) { copied = false } }
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 12, weight: .medium))
+            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.ui(size: 12, weight: .medium))
                 .foregroundStyle(copied ? Brand.accent : hovering ? Color.primary : Color.secondary)
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 26, height: 26)
@@ -537,12 +537,12 @@ struct SyncChip: View {
     let mark: SyncMark
     var body: some View {
         let (text, icon, color): (String, String, Color) = switch mark {
-        case .onlyMain: (L("onlyMain"), "arrow.up.circle", Brand.info)
-        case .onlyDevelop: (L("onlyDevelop"), "arrow.down.circle", Brand.warning)
+        case .onlyPrimary(let branch): (String(format: L("onlyBranch"), branch), "arrow.up.circle", Brand.info)
+        case .onlyOther(let branch): (String(format: L("onlyBranch"), branch), "arrow.down.circle", Brand.warning)
         case .copied: (L("inBoth"), "checkmark.circle", .secondary)
         }
         Label(text, systemImage: icon).labelStyle(SyncChipStyle())
-            .font(.system(size: 9, weight: .semibold)).foregroundStyle(color)
+            .font(.ui(size: 9, weight: .semibold)).foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.12), in: Capsule())
             .overlay(Capsule().strokeBorder(color.opacity(0.35), style: StrokeStyle(lineWidth: 0.5, dash: mark == .copied ? [2] : [])))
@@ -550,7 +550,7 @@ struct SyncChip: View {
     }
 }
 struct SyncChipStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View { HStack(spacing: 3) { configuration.icon.font(.system(size: 8)); configuration.title } }
+    func makeBody(configuration: Configuration) -> some View { HStack(spacing: 3) { configuration.icon.font(.ui(size: 8)); configuration.title } }
 }
 
 private struct CommitContextMenu: View {
@@ -598,10 +598,10 @@ struct ChangeKindBadge: View {
     var compact = false
     var body: some View {
         Group {
-            if compact { Image(systemName: kind.icon).font(.system(size: 11)).foregroundStyle(kind.color) }
+            if compact { Image(systemName: kind.icon).font(.ui(size: 11)).foregroundStyle(kind.color) }
             else {
                 Label(kind.title, systemImage: kind.icon).labelStyle(SyncChipStyle())
-                    .font(.system(size: 9, weight: .semibold)).foregroundStyle(kind.color)
+                    .font(.ui(size: 9, weight: .semibold)).foregroundStyle(kind.color)
                     .padding(.horizontal, 6).padding(.vertical, 2).background(kind.color.opacity(0.13), in: Capsule())
             }
         }

@@ -116,8 +116,8 @@ struct CodeEditorView: NSViewRepresentable {
 }
 
 enum CodeEditorStyle {
-    static let font = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
-    static let advance = ("0" as NSString).size(withAttributes: [.font: font]).width
+    static var font: NSFont { NSFont.monospacedSystemFont(ofSize: TextScale.points(12.5), weight: .regular) }
+    static var advance: CGFloat { ("0" as NSString).size(withAttributes: [.font: font]).width }
     static let currentLine = NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white.withAlphaComponent(0.05) : NSColor.black.withAlphaComponent(0.035) }
 }
 
@@ -153,8 +153,8 @@ private final class CodeLineRuler: NSRulerView {
         let text = view.string as NSString
         let caretLine = text.substring(to: min(view.selectedRange().location, text.length)).reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
         let style = NSMutableParagraphStyle(); style.alignment = .right
-        let normal: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular), .foregroundColor: NSColor.tertiaryLabelColor, .paragraphStyle: style]
-        let current: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: style]
+        let normal: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: TextScale.points(10.5), weight: .regular), .foregroundColor: NSColor.tertiaryLabelColor, .paragraphStyle: style]
+        let current: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: TextScale.points(10.5), weight: .semibold), .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: style]
         let glyphs = manager.glyphRange(forBoundingRect: view.visibleRect, in: container)
         let firstCharacter = manager.characterIndexForGlyph(at: glyphs.location)
         var number = text.substring(to: firstCharacter).reduce(1) { $1 == "\n" ? $0 + 1 : $0 }

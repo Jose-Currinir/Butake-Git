@@ -22,6 +22,10 @@ struct OrganizeCommitsView: View {
     private var reworded: Int { items.filter { $0.commits.count == 1 && !$0.drop && $0.changedMessage }.count }
     private var selectedItems: [RewriteItem] { items.filter { selection.contains($0.id) } }
 
+    private func move(_ id: RewriteItem.ID, by offset: Int) {
+        guard let index = items.firstIndex(where: { $0.id == id }), items.indices.contains(index + offset) else { return }
+        withAnimation(.snappy) { items.swapAt(index, index + offset) }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -53,12 +57,12 @@ struct OrganizeCommitsView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "wand.and.stars").font(.system(size: 20, weight: .semibold)).foregroundStyle(Brand.accent)
+            Image(systemName: "wand.and.stars").font(.ui(size: 20, weight: .semibold)).foregroundStyle(Brand.accent)
                 .frame(width: 40, height: 40).background(Brand.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 3) {
-                Text(L("organizeTitle")).font(.title3.weight(.semibold))
-                Text(L("organizeHelp")).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                if let candidates { Text(boundaryText(candidates)).font(.caption2).foregroundStyle(.tertiary).lineLimit(2) }
+                Text(L("organizeTitle")).font(.uiTitle3.weight(.semibold))
+                Text(L("organizeHelp")).font(.uiCaption).foregroundStyle(.secondary).lineLimit(2)
+                if let candidates { Text(boundaryText(candidates)).font(.uiCaption2).foregroundStyle(.tertiary).lineLimit(2) }
             }
             Spacer()
         }.padding(18)
@@ -78,11 +82,14 @@ struct OrganizeCommitsView: View {
                         OrganizeRow(item: $item, editing: editing == item.id, onEdit: { editing = editing == item.id ? nil : item.id })
                             .tag(item.id)
                             .accessibilityIdentifier("organize.item.\(item.commits.first?.shortHash ?? "")")
+                            // Reordering is a drag; these actions do the same for assistive clients and agents.
+                            .accessibilityAction(named: L("moveUp")) { move(item.id, by: -1) }
+                            .accessibilityAction(named: L("moveDown")) { move(item.id, by: 1) }
                     }
                     .onMove { from, to in withAnimation(.snappy) { items.move(fromOffsets: from, toOffset: to) } }
                 }
-                .listStyle(.inset)
-                if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Brand.warning).padding(10).textSelection(.enabled) }
+                .listStyle(.inset).themedScroll()
+                if !error.isEmpty { Label(error, systemImage: "exclamationmark.triangle").font(.uiCaption).foregroundStyle(Brand.warning).padding(10).textSelection(.enabled) }
                 }
                 .frame(minWidth: 420, idealWidth: 480, maxWidth: 560)
                 Divider()
@@ -110,7 +117,7 @@ struct OrganizeCommitsView: View {
             Button { if let first = selectedItems.first { editing = first.id } } label: { Label(L("editMessage"), systemImage: "pencil") }
                 .disabled(selectedItems.count != 1).accessibilityIdentifier("organize.edit")
             Spacer()
-            Text(L("dragHint")).font(.caption2).foregroundStyle(.tertiary)
+            Text(L("dragHint")).font(.uiCaption2).foregroundStyle(.tertiary)
             Button(L("resetPlan")) { withAnimation(.snappy) { items = original; selection = []; editing = nil } }.disabled(!changed).accessibilityIdentifier("organize.reset")
         }
         .controlSize(.small).padding(.horizontal, 14).padding(.vertical, 8)
@@ -119,7 +126,7 @@ struct OrganizeCommitsView: View {
     private var footer: some View {
         HStack(spacing: 12) {
             if !items.isEmpty {
-                Label(summaryText, systemImage: changed ? "sparkles" : "equal.circle").font(.caption).foregroundStyle(changed ? Brand.accent : .secondary)
+                Label(summaryText, systemImage: changed ? "sparkles" : "equal.circle").font(.uiCaption).foregroundStyle(changed ? Brand.accent : .secondary)
                     .contentTransition(.opacity).animation(.snappy, value: summaryText)
             }
             Spacer()
@@ -206,24 +213,24 @@ private struct OrganizeRow: View {
             HStack(spacing: 10) {
                 Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).help(L("dragHint"))
                 if item.commits.count > 1 {
-                    Text(String(format: L("combinedCount"), item.commits.count)).font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.accent)
+                    Text(String(format: L("combinedCount"), item.commits.count)).font(.ui(size: 9, weight: .bold)).foregroundStyle(Brand.accent)
                         .padding(.horizontal, 6).padding(.vertical, 2).background(Brand.accent.opacity(0.14), in: Capsule())
                 }
-                Text(item.subject.isEmpty ? L("noMessage") : item.subject).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                Text(item.subject.isEmpty ? L("noMessage") : item.subject).font(.ui(size: 12, weight: .medium)).lineLimit(1)
                     .strikethrough(item.drop).foregroundStyle(item.drop ? .secondary : .primary)
                 if item.changedMessage && !item.drop && item.commits.count == 1 { Image(systemName: "pencil.circle.fill").foregroundStyle(Brand.accent).help(L("messageChanged")) }
-                if item.drop { Text(L("willRemove")).font(.system(size: 9, weight: .bold)).foregroundStyle(Brand.danger).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.danger.opacity(0.12), in: Capsule()) }
+                if item.drop { Text(L("willRemove")).font(.ui(size: 9, weight: .bold)).foregroundStyle(Brand.danger).padding(.horizontal, 6).padding(.vertical, 2).background(Brand.danger.opacity(0.12), in: Capsule()) }
                 Spacer()
-                Text(item.commits.map(\.shortHash).joined(separator: " + ")).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
+                Text(item.commits.map(\.shortHash).joined(separator: " + ")).font(.ui(size: 10, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
                 Button(action: onEdit) { Image(systemName: editing ? "chevron.up" : "pencil") }.buttonStyle(.borderless).help(L("editMessage")).accessibilityLabel(L("editMessage"))
             }
             if editing {
-                TextEditor(text: $item.message).font(.system(size: 12)).frame(height: 90).scrollContentBackground(.hidden)
+                TextEditor(text: $item.message).font(.ui(size: 12)).frame(height: 90).scrollContentBackground(.hidden)
                     .padding(6).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
                     .accessibilityLabel(L("message")).accessibilityIdentifier("organize.message")
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 if item.commits.count > 1 {
-                    Text(item.commits.map { "\($0.shortHash) \($0.subject)" }.joined(separator: "\n")).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                    Text(item.commits.map { "\($0.shortHash) \($0.subject)" }.joined(separator: "\n")).font(.ui(size: 10, design: .monospaced)).foregroundStyle(.secondary)
                 }
             }
         }
@@ -242,11 +249,11 @@ struct CommitPreview: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "doc.text.magnifyingglass").foregroundStyle(Brand.accent)
-                Text(hashes.isEmpty ? L("previewTitle") : String(format: L("previewCount"), hashes.count)).font(.system(size: 12, weight: .semibold))
+                Text(hashes.isEmpty ? L("previewTitle") : String(format: L("previewCount"), hashes.count)).font(.ui(size: 12, weight: .semibold))
                 Spacer()
                 if loading { Spinner(size: 14) }
                 if !text.isEmpty { Button { store.copyToPasteboard(text) } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).help(L("copyDiff")).accessibilityLabel(L("copyDiff")) }
-            }.padding(.horizontal, 14).frame(height: 38).background(.bar)
+            }.padding(.horizontal, 14).frame(height: 38).background(Brand.bar)
             Divider()
             if hashes.isEmpty {
                 ContentUnavailableView(L("previewTitle"), systemImage: "cursorarrow.click", description: Text(L("previewHint"))).frame(maxWidth: .infinity, maxHeight: .infinity)

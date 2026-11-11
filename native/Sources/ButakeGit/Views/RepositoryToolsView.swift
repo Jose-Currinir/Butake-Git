@@ -22,27 +22,27 @@ struct RepositoryToolsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label(store.route.title, systemImage: store.route.icon).font(.headline)
+                Label(store.route.title, systemImage: store.route.icon).font(.uiHeadline)
                 Spacer()
                 if loading { Spinner(size: 14) }
                 toolActions
-                Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh"))
-            }.padding(16).background(.bar)
+                Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityIdentifier("tools.refresh").accessibilityLabel(L("refresh")).help(L("refresh"))
+            }.padding(16).background(Brand.bar)
             Divider()
             if store.route == .branches {
                 List(store.repository?.branches ?? []) { branch in
-                    HStack(spacing: 14) { Image(systemName: store.isProtected(branch.name) ? "lock.fill" : "arrow.triangle.branch").foregroundStyle(branch.current ? Brand.accent : .secondary); VStack(alignment: .leading, spacing: 5) { Text(branch.name).font(.headline); Text(branch.upstream.isEmpty ? "—" : branch.upstream).font(.caption).foregroundStyle(.secondary) }; Spacer(); if branch.current { Text(L("current")).font(.caption).foregroundStyle(Brand.accent) } else { Button(L("switch_branch")) { store.action("switch_branch", value: branch.name) }.controlSize(.small) } }
-                        .padding(.vertical, 8).contextMenu { Button(L("merge")) { store.action("merge", value: branch.name, confirm: true) }.disabled(!store.canWrite || branch.current); Button(L("rebase")) { store.action("rebase", value: branch.name, confirm: true) }.disabled(!store.canWrite || branch.current); Button(L("rename")) { store.inspect("branch", arguments: "-m \(shellQuote(branch.name)) ") }; Button(L("delete"), role: .destructive) { store.deleteBranch(branch.name) }.disabled(branch.current || branch.name == store.repository?.primary) }
-                }.listStyle(.inset)
+                    HStack(spacing: 14) { Image(systemName: store.isProtected(branch.name) ? "lock.fill" : "arrow.triangle.branch").foregroundStyle(branch.current ? Brand.accent : .secondary); VStack(alignment: .leading, spacing: 5) { Text(branch.name).font(.uiHeadline); Text(branch.upstream.isEmpty ? "—" : branch.upstream).font(.uiCaption).foregroundStyle(.secondary) }; Spacer(); if branch.current { Text(L("current")).font(.uiCaption).foregroundStyle(Brand.accent) } else { Button(L("switch_branch")) { store.action("switch_branch", value: branch.name) }.controlSize(.small) } }
+                        .padding(.vertical, 8).contextMenu { Button(L("merge")) { store.action("merge", value: branch.name, confirm: true) }.accessibilityIdentifier("tools.merge").disabled(!store.canWrite || branch.current); Button(L("rebase")) { store.action("rebase", value: branch.name, confirm: true) }.accessibilityIdentifier("tools.rebase").disabled(!store.canWrite || branch.current); Button(L("rename")) { store.inspect("branch", arguments: "-m \(shellQuote(branch.name)) ") }.accessibilityIdentifier("tools.rename"); Button(L("delete"), role: .destructive) { store.deleteBranch(branch.name) }.accessibilityIdentifier("tools.delete").disabled(branch.current || branch.name == store.repository?.primary) }
+                }.listStyle(.inset).themedScroll()
             } else if entries.isEmpty && !loading { emptyState.frame(maxHeight: .infinity) }
             else {
                 List(entries, selection: $selected) { entry in
                     ToolEntryRow(entry: entry, fallbackIcon: store.route.icon) { entryActions(entry) }.tag(entry.id)
                         .accessibilityIdentifier("\(store.route.rawValue).\(entry.id)")
-                }.listStyle(.inset)
+                }.listStyle(.inset).themedScroll()
             }
         }.task(id: "\(store.route.rawValue)-\(store.repository?.root ?? "")-\(store.repository?.commits.first?.hash ?? "")-\(store.status)") { await reload() }
-        .sheet(item: $form) { form in ToolFormSheet(store: store, form: form) }
+        .sheet(item: $form) { form in ToolFormSheet(store: store, form: form).themedSheet() }
     }
     @ViewBuilder private var emptyState: some View {
         let key = "empty_\(store.route.rawValue)"
@@ -50,43 +50,43 @@ struct RepositoryToolsView: View {
             Label(L(key + "_title"), systemImage: store.route.icon)
         } description: { Text(L(key + "_detail")) } actions: {
             switch store.route {
-            case .stash: Button(L("stashSave")) { store.action("stash") }.disabled(!store.canWrite || store.files.isEmpty != false)
-            case .tags: Button(L("newTag")) { form = ToolForm(kind: "tag", title: L("newTag"), command: "tag") }.disabled(!store.canWrite)
+            case .stash: Button(L("stashSave")) { store.action("stash") }.accessibilityIdentifier("tools.stashSave").disabled(!store.canWrite || store.files.isEmpty != false)
+            case .tags: Button(L("newTag")) { form = ToolForm(kind: "tag", title: L("newTag"), command: "tag") }.accessibilityIdentifier("tools.newTag").disabled(!store.canWrite)
             case .remotes:
                 Button(L("publishRepository") + "…") { store.publishingRepository = true }.buttonStyle(.borderedProminent).accessibilityIdentifier("remotes.publish")
-                Button(L("newRemote")) { form = ToolForm(kind: "remote", title: L("newRemote"), command: "remote") }.disabled(!store.canWrite)
+                Button(L("newRemote")) { form = ToolForm(kind: "remote", title: L("newRemote"), command: "remote") }.accessibilityIdentifier("tools.newRemote").disabled(!store.canWrite)
             default: EmptyView()
             }
         }
     }
     @ViewBuilder private var toolActions: some View {
         switch store.route {
-        case .branches: Button(L("newBranch")) { form = ToolForm(kind: "branch", title: L("newBranch"), command: "switch") }
-        case .worktrees: Button(L("newWorktree")) { form = ToolForm(kind: "worktree", title: L("newWorktree"), command: "worktree") }.disabled(!store.canWrite)
-        case .tags: Button(L("newTag")) { form = ToolForm(kind: "tag", title: L("newTag"), command: "tag") }.disabled(!store.canWrite)
-        case .remotes: Button(L("newRemote")) { form = ToolForm(kind: "remote", title: L("newRemote"), command: "remote") }.disabled(!store.canWrite)
-        case .stash: Button(L("stashSave")) { store.action("stash") }
+        case .branches: Button(L("newBranch")) { form = ToolForm(kind: "branch", title: L("newBranch"), command: "switch") }.accessibilityIdentifier("tools.newBranch")
+        case .worktrees: Button(L("newWorktree")) { form = ToolForm(kind: "worktree", title: L("newWorktree"), command: "worktree") }.accessibilityIdentifier("tools.newWorktree").disabled(!store.canWrite)
+        case .tags: Button(L("newTag")) { form = ToolForm(kind: "tag", title: L("newTag"), command: "tag") }.accessibilityIdentifier("tools.newTag").disabled(!store.canWrite)
+        case .remotes: Button(L("newRemote")) { form = ToolForm(kind: "remote", title: L("newRemote"), command: "remote") }.accessibilityIdentifier("tools.newRemote").disabled(!store.canWrite)
+        case .stash: Button(L("stashSave")) { store.action("stash") }.accessibilityIdentifier("tools.stashSave")
         default: EmptyView()
         }
     }
     @ViewBuilder private func entryActions(_ entry: ToolEntry) -> some View {
         switch store.route {
         case .worktrees:
-            Button(L("open")) { store.reopenRecent(entry.id) }.controlSize(.small)
-            Menu { Button(L("openFinder")) { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: entry.id) }; Button(L("delete"), role: .destructive) { Task { await store.prepare("worktree", arguments: "remove \(shellQuote(entry.id))") } }.disabled(entry.id == store.repository?.root) } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).fixedSize()
+            Button(L("open")) { store.reopenRecent(entry.id) }.accessibilityIdentifier("tools.open").controlSize(.small)
+            Menu { Button(L("openFinder")) { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: entry.id) }.accessibilityIdentifier("tools.openFinder"); Button(L("delete"), role: .destructive) { Task { await store.prepare("worktree", arguments: "remove \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.delete").disabled(entry.id == store.repository?.root) } label: { Image(systemName: "ellipsis") }.accessibilityIdentifier("tools.openFinder").menuStyle(.borderlessButton).fixedSize()
         case .stash:
             Menu {
-                Button(L("stashApply")) { Task { await store.prepare("stash", arguments: "apply \(shellQuote(entry.id))") } }
-                Button(L("stashPop")) { Task { await store.prepare("stash", arguments: "pop \(shellQuote(entry.id))") } }
-                Button(L("stashDrop"), role: .destructive) { Task { await store.prepare("stash", arguments: "drop \(shellQuote(entry.id))") } }
-                Button(L("diff")) { store.showDiff(entry.id, subtitle: L("stash"), args: ["diff", "--no-ext-diff", "--no-color", "\(entry.id)^1", entry.id]) }
+                Button(L("stashApply")) { Task { await store.prepare("stash", arguments: "apply \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.stashApply")
+                Button(L("stashPop")) { Task { await store.prepare("stash", arguments: "pop \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.stashPop")
+                Button(L("stashDrop"), role: .destructive) { Task { await store.prepare("stash", arguments: "drop \(shellQuote(entry.id))") } }.accessibilityIdentifier("tools.stashDrop")
+                Button(L("diff")) { store.showDiff(entry.id, subtitle: L("stash"), args: ["diff", "--no-ext-diff", "--no-color", "\(entry.id)^1", entry.id]) }.accessibilityIdentifier("tools.diff")
             } label: { Image(systemName: "ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
         case .tags:
-            Button(L("viewChanges")) { store.showCommit(entry.id, title: entry.id) }.controlSize(.small)
+            Button(L("viewChanges")) { store.showCommit(entry.id, title: entry.id) }.accessibilityIdentifier("tools.viewChanges").controlSize(.small)
         case .remotes:
-            Button(L("fetch")) { Task { await store.prepare("fetch", arguments: shellQuote(entry.id)) } }.controlSize(.small)
+            Button(L("fetch")) { Task { await store.prepare("fetch", arguments: shellQuote(entry.id)) } }.accessibilityIdentifier("tools.fetch").controlSize(.small)
         case .reflog:
-            Button(L("viewChanges")) { store.showCommit(entry.extra, title: entry.title) }.controlSize(.small)
+            Button(L("viewChanges")) { store.showCommit(entry.extra, title: entry.title) }.accessibilityIdentifier("tools.viewChanges").controlSize(.small)
         default: EmptyView()
         }
     }
@@ -148,11 +148,11 @@ private struct ToolFormSheet: View {
     @State private var value = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text(form.title).font(.title2.weight(.semibold))
-            TextField(L("name"), text: $name).textFieldStyle(.roundedBorder)
-            if form.kind == "remote" { TextField(L("remoteURL"), text: $value).textFieldStyle(.roundedBorder) }
-            if form.kind == "worktree" { HStack { TextField(L("path"), text: $value).textFieldStyle(.roundedBorder); Button(L("target")) { let panel = NSSavePanel(); panel.canCreateDirectories = true; panel.nameFieldStringValue = name; if panel.runModal() == .OK { value = panel.url?.path ?? "" } } }; Text(L("worktreeHelp")).font(.caption).foregroundStyle(.secondary) }
-            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }; Button(L("create")) { create() }.buttonStyle(.borderedProminent).disabled(name.isEmpty || ((form.kind == "remote" || form.kind == "worktree") && value.isEmpty)) }
+            Text(form.title).font(.uiTitle2.weight(.semibold))
+            TextField(L("name"), text: $name).accessibilityIdentifier("tools.name").textFieldStyle(.roundedBorder)
+            if form.kind == "remote" { TextField(L("remoteURL"), text: $value).accessibilityIdentifier("tools.remoteURL").textFieldStyle(.roundedBorder) }
+            if form.kind == "worktree" { HStack { TextField(L("path"), text: $value).accessibilityIdentifier("tools.path").textFieldStyle(.roundedBorder); Button(L("target")) { let panel = NSSavePanel(); panel.canCreateDirectories = true; panel.nameFieldStringValue = name; if panel.runModal() == .OK { value = panel.url?.path ?? "" } }.accessibilityIdentifier("tools.target") }; Text(L("worktreeHelp")).font(.uiCaption).foregroundStyle(.secondary) }
+            HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }.accessibilityIdentifier("tools.cancel"); Button(L("create")) { create() }.accessibilityIdentifier("tools.create").buttonStyle(.borderedProminent).disabled(name.isEmpty || ((form.kind == "remote" || form.kind == "worktree") && value.isEmpty)) }
         }.padding(26).frame(width: 480)
     }
     private func create() {
@@ -231,22 +231,22 @@ private struct ToolEntryRow<Actions: View>: View {
     @ViewBuilder var actions: () -> Actions
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: entry.icon ?? fallbackIcon).font(.system(size: 15)).foregroundStyle(entry.tint.color).frame(width: 24)
+            Image(systemName: entry.icon ?? fallbackIcon).font(.ui(size: 15)).foregroundStyle(entry.tint.color).frame(width: 24)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     if let chip = entry.chip {
-                        Text(chip).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(entry.tint.color)
+                        Text(chip).font(.ui(size: 9.5, weight: .semibold)).foregroundStyle(entry.tint.color)
                             .padding(.horizontal, 6).padding(.vertical, 1.5).background(entry.tint.color.opacity(0.12), in: Capsule()).fixedSize()
                     }
-                    Text(entry.title).font(.system(size: 12.5, weight: entry.isCurrent ? .semibold : .medium)).lineLimit(1).truncationMode(.tail)
+                    Text(entry.title).font(.ui(size: 12.5, weight: entry.isCurrent ? .semibold : .medium)).lineLimit(1).truncationMode(.tail)
                 }
                 HStack(spacing: 6) {
                     if !entry.detail.isEmpty && entry.detail != entry.chip { Text(entry.detail).lineLimit(1).truncationMode(.middle) }
-                    if !entry.extra.isEmpty { Text(entry.extra).font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary) }
-                }.font(.system(size: 10.5)).foregroundStyle(.secondary).textSelection(.enabled)
+                    if !entry.extra.isEmpty { Text(entry.extra).font(.ui(size: 10, design: .monospaced)).foregroundStyle(.tertiary) }
+                }.font(.ui(size: 10.5)).foregroundStyle(.secondary).textSelection(.enabled)
             }
             Spacer(minLength: 12)
-            if let date = entry.date { Text(RelativeDateCache.shared.text(for: date)).font(.system(size: 10.5)).foregroundStyle(.tertiary).help(date.formatted(date: .abbreviated, time: .shortened)) }
+            if let date = entry.date { Text(RelativeDateCache.shared.text(for: date)).font(.ui(size: 10.5)).foregroundStyle(.tertiary).help(date.formatted(date: .abbreviated, time: .shortened)) }
             actions()
         }
         .padding(.vertical, 6).contentShape(Rectangle())

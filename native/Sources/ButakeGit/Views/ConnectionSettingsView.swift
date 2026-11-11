@@ -21,11 +21,11 @@ private struct GeneralSettings: View {
                     .onChange(of: notchEnabled) { _, _ in NotchController.shared.update() }
                     .accessibilityIdentifier("settings.notch")
                 Toggle(L("autoFetchToggle"), isOn: $autoFetch)
-                Text(L(NotchGeometry.current() == nil ? "notchUnavailable" : "notchHelp")).font(.caption).foregroundStyle(.secondary)
+                Text(L(NotchGeometry.current() == nil ? "notchUnavailable" : "notchHelp")).font(.uiCaption).foregroundStyle(.secondary)
             }
             UpdateSettingsSection()
             ThemeSettingsSection()
-        }.formStyle(.grouped)
+        }.formStyle(.grouped).themedScroll()
     }
 }
 
@@ -34,9 +34,9 @@ struct AccountsSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(L("accountsIntro")).font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                Text(L("accountsIntro")).font(.uiCallout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 ForEach(HostingProvider.allCases) { ProviderAccountCard(provider: $0) }
-                Label(L("accountsSecurity"), systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
+                Label(L("accountsSecurity"), systemImage: "lock.shield").font(.uiCaption).foregroundStyle(.secondary)
             }.padding(20)
         }
     }
@@ -55,27 +55,27 @@ private struct ProviderAccountCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: provider == .github ? "chevron.left.forwardslash.chevron.right" : "shippingbox").font(.system(size: 16, weight: .semibold)).foregroundStyle(Brand.accent)
+                Image(systemName: provider == .github ? "chevron.left.forwardslash.chevron.right" : "shippingbox").font(.ui(size: 16, weight: .semibold)).foregroundStyle(Brand.accent)
                     .frame(width: 32, height: 32).background(Brand.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.title).font(.headline)
+                    Text(provider.title).font(.uiHeadline)
                     Text(saved ? (connectedAs.isEmpty ? L("connected") : String(format: L("connectedAs"), connectedAs)) : L("notConnected"))
-                        .font(.caption).foregroundStyle(saved ? Brand.accent : .secondary)
+                        .font(.uiCaption).foregroundStyle(saved ? Brand.accent : .secondary)
                 }
                 Spacer()
-                Link(L("tokenDocs"), destination: provider.docsURL).font(.caption)
+                Link(L("tokenDocs"), destination: provider.docsURL).font(.uiCaption)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text(L("step1")).font(.caption.weight(.semibold))
+                Text(L("step1")).font(.uiCaption.weight(.semibold))
                 Link(destination: provider.tokenURL) { Label(String(format: L("createTokenOn"), provider.title), systemImage: "arrow.up.right.square") }
                     .buttonStyle(.bordered).accessibilityIdentifier("accounts.\(provider.rawValue).create")
-                Text(L(provider == .github ? "step2GitHub" : "step2Bitbucket")).font(.caption.weight(.semibold)).padding(.top, 4)
+                Text(L(provider == .github ? "step2GitHub" : "step2Bitbucket")).font(.uiCaption.weight(.semibold)).padding(.top, 4)
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(provider.permissions, id: \.self) { permission in
-                        Label(permission, systemImage: "checkmark.square").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                        Label(permission, systemImage: "checkmark.square").font(.ui(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                     }
                 }.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-                Text(L("step3")).font(.caption.weight(.semibold)).padding(.top, 4)
+                Text(L("step3")).font(.uiCaption.weight(.semibold)).padding(.top, 4)
             }
             if provider.needsEmail { TextField(L("email"), text: $email).textContentType(.emailAddress).textFieldStyle(.roundedBorder).accessibilityIdentifier("accounts.\(provider.rawValue).email") }
             SecureField(saved ? L("tokenSavedPlaceholder") : L("apiToken"), text: $token).textFieldStyle(.roundedBorder).accessibilityIdentifier("accounts.\(provider.rawValue).token")
@@ -85,7 +85,7 @@ private struct ProviderAccountCard: View {
                     .accessibilityIdentifier("accounts.\(provider.rawValue).save")
                 if saved { Button(L("testConnection")) { Task { await testSaved() } }.disabled(testing); Button(L("disconnect"), role: .destructive) { ProviderVault.remove(provider); saved = false; connectedAs = ""; status = ""; token = "" } }
             }
-            if !status.isEmpty { Label(status, systemImage: failed ? "exclamationmark.triangle" : "checkmark.circle").font(.caption).foregroundStyle(failed ? Brand.danger : Brand.accent).textSelection(.enabled) }
+            if !status.isEmpty { Label(status, systemImage: failed ? "exclamationmark.triangle" : "checkmark.circle").font(.uiCaption).foregroundStyle(failed ? Brand.danger : Brand.accent).textSelection(.enabled) }
         }
         .padding(16).background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(saved ? Brand.accent.opacity(0.4) : Color.secondary.opacity(0.15)))

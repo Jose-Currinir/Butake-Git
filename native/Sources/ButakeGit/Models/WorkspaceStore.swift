@@ -43,6 +43,9 @@ import QuartzCore
     @ObservationIgnored private var historyCache: (key: String, model: HistoryModel)?
     @ObservationIgnored private var refreshInFlight = false
     @ObservationIgnored private var refreshQueued = false
+    /// A queued or scheduled refresh needs the full snapshot (history, branches), not just the changed files.
+    @ObservationIgnored private var queuedFull = false
+    @ObservationIgnored private var scheduledFull = false
     @ObservationIgnored private var scheduledRefresh: Task<Void, Never>?
     /// Grows while filesystem-triggered refreshes find nothing new (e.g. logs written by a dev server).
     @ObservationIgnored private var idleDelay: Duration = .milliseconds(300)
@@ -103,7 +106,7 @@ import QuartzCore
     @ObservationIgnored private var reviewCache: (key: String, nodes: [ChangeNode], files: [ChangedFile])?
     /// Backup of the last guided rewrite in this session, offered as "Deshacer".
     var lastRewrite: (backup: String, branch: String)?
-    /// main/develop membership for history badges; loaded after each snapshot change.
+    /// History badges: which commits are only in the primary branch, only in the compared branch, or in both.
     var syncMarks: [String: SyncMark] = [:]
     @ObservationIgnored private var syncMarksKey = ""
     var resolving: ChangedFile?
@@ -125,6 +128,8 @@ import QuartzCore
     static let historyPage = 180
     private var toastTask: Task<Void, Never>?
     private var diffGeneration = UUID()
+    /// Request whose diff already arrived; the delayed "clear while loading" must not erase it.
+    @ObservationIgnored private var diffArrived: UUID?
     private var accessing: [String: URL] = [:]
     var canWrite: Bool { !busy && !terminalActive && !onProtectedMain && repository != nil }
     /// Fast-forward pulls are allowed on protected main: they only bring the remote state, never local commits.
@@ -239,18 +244,23 @@ import QuartzCore
         await refresh()
     }
     /// Coalesced refresh: concurrent callers share one in-flight snapshot plus at most one follow-up.
-    func refresh() async {
+    /// `filesOnly` reads just `git status`: enough for working-tree edits, which cannot move refs or history.
+    func refresh(filesOnly: Bool = false) async {
         guard repository != nil, !terminalActive else { return }
-        if refreshInFlight { refreshQueued = true; return }
+        if refreshInFlight { refreshQueued = true; if !filesOnly { queuedFull = true }; return }
         refreshInFlight = true
         defer { refreshInFlight = false }
+        var full = !filesOnly
         repeat {
             refreshQueued = false
-            await refreshOnce()
+            if queuedFull { full = true; queuedFull = false }
+            await refreshOnce(filesOnly: !full)
+            full = false
         } while refreshQueued
     }
     /// Debounced refresh for bursts of filesystem events (e.g. an agent rewriting hundreds of files).
-    func scheduleRefresh() {
+    func scheduleRefresh(gitState: Bool = true) {
+        if gitState { scheduledFull = true }
         guard scheduledRefresh == nil else { return } // coalesce: one pending refresh at a time
         let delay = idleDelay
         scheduledRefresh = Task { [weak self] in
@@ -259,7 +269,8 @@ import QuartzCore
             self.scheduledRefresh = nil
             guard !Task.isCancelled, !self.busy, !self.terminalActive else { return }
             self.statsDirty = true
-            await self.refresh()
+            let full = self.scheduledFull; self.scheduledFull = false
+            await self.refresh(filesOnly: !full)
             // Back off while events keep arriving without visible changes; reset as soon as something changes.
             // While changes keep coming, the pace scales with the list: re-rendering thousands of rows costs ~70 ms,
             // so a huge working tree refreshes every 1–2 s instead of several times per second (no visible lag).
@@ -283,10 +294,18 @@ import QuartzCore
             }
         }
     }
-    private func refreshOnce() async {
+    private func refreshOnce(filesOnly: Bool = false) async {
         guard let root = repository?.root else { return }
         do {
-            let result: RepositorySnapshot = try await engine.call(["method": "snapshot", "path": root, "limit": historyLimit])
+            let result: RepositorySnapshot
+            if filesOnly {
+                let files: [ChangedFile] = try await engine.call(["method": "status", "path": root])
+                // Applied over whatever snapshot is current now, so nothing else goes stale.
+                guard var current = storedRepository, current.root == root else { return }
+                current.files = files; result = current
+            } else {
+                result = try await engine.call(["method": "snapshot", "path": root, "limit": historyLimit])
+            }
             #if DEBUG || BUTAKE_QA
             NSLog("BUTAKE_QA refresh files=%d changed=%d", result.files.count, result != repository ? 1 : 0)
             #endif
@@ -497,7 +516,7 @@ import QuartzCore
         return model
     }
     func startWatching(_ root: String) {
-        watcher = RepositoryWatcher(root: root) { [weak self] in Task { @MainActor in self?.scheduleRefresh() } }
+        watcher = RepositoryWatcher(root: root) { [weak self] gitState in Task { @MainActor in self?.scheduleRefresh(gitState: gitState) } }
     }
     func loadMoreHistory() {
         guard repository != nil, !loadingHistory, canLoadMoreHistory else { return }
@@ -528,17 +547,22 @@ import QuartzCore
         let list = commits.map { "\($0.shortHash) \($0.subject)" }.joined(separator: "\n")
         pending = PendingOperation(title: String(format: L("copyTo"), target), root: root, preview: "git switch \(target)\ngit cherry-pick -x \(commits.reversed().map(\.shortHash).joined(separator: " "))\ngit switch \(repository?.branch ?? "")\n\n\(list)", copyHashes: commits.map(\.hash), copyTarget: target, detail: String(format: L("copyDetail"), commits.count, target))
     }
-    /// Loads main/develop membership marks (by patch content) for the history badges.
+    /// Loads the membership marks (by patch content) for the history badges.
     func loadSyncMarks() {
-        guard let repo = repository, Set(repo.branches.map(\.name)).isSuperset(of: [repo.primary, "develop"]) else { if !syncMarks.isEmpty { syncMarks = [:] }; return }
-        let key = repo.branches.map { $0.name }.joined() + (repo.commits.first?.hash ?? "") + "\(repo.commits.count)"
+        // The primary branch against the branch being worked on (or, standing on the primary one, the branch that
+        // moved most recently). No branch names are assumed.
+        guard let repo = repository, repo.branches.contains(where: { $0.name == repo.primary }),
+              let other = repo.branch != repo.primary && repo.branches.contains(where: { $0.name == repo.branch }) ? repo.branch
+                : repo.branches.filter({ $0.name != repo.primary }).max(by: { ($0.updated ?? 0) < ($1.updated ?? 0) })?.name
+        else { syncMarksKey = ""; if !syncMarks.isEmpty { syncMarks = [:] }; return }
+        let key = "\(repo.primary)|\(other)|" + repo.branches.map { "\($0.name)\($0.updated ?? 0)" }.joined() + (repo.commits.first?.hash ?? "") + "\(repo.commits.count)"
         guard key != syncMarksKey else { return }
         syncMarksKey = key
         Task {
-            guard let sync: BranchSyncResult = try? await engine.call(["method": "branchSync", "path": repo.root, "left": repo.primary, "right": "develop"]) else { return }
+            guard let sync: BranchSyncResult = try? await engine.call(["method": "branchSync", "path": repo.root, "left": repo.primary, "right": other]) else { return }
             var marks: [String: SyncMark] = [:]
-            for commit in sync.onlyLeft { marks[commit.hash] = .onlyMain }
-            for commit in sync.onlyRight { marks[commit.hash] = .onlyDevelop }
+            for commit in sync.onlyLeft { marks[commit.hash] = .onlyPrimary(repo.primary) }
+            for commit in sync.onlyRight { marks[commit.hash] = .onlyOther(other) }
             for commit in sync.equivalentLeft + sync.equivalentRight { marks[commit.hash] = .copied }
             syncMarks = marks
         }
@@ -749,13 +773,13 @@ import QuartzCore
         let generation = UUID(); diffGeneration = generation
         // Clear only if the new diff is slow to arrive: an instant swap avoids a blank flash between files.
         if !keepCurrent {
-            Task { [weak self] in try? await Task.sleep(for: .milliseconds(150)); if let self, self.diffGeneration == generation, self.selectedFile?.path == file.path { self.diff = "" } }
+            Task { [weak self] in try? await Task.sleep(for: .milliseconds(150)); if let self, self.diffGeneration == generation, self.diffArrived != generation, self.selectedFile?.path == file.path { self.diff = "" } }
         }
         Task {
             do {
                 let value: String = try await engine.call(["method": "diff", "path": root, "file": file.path, "staged": staged])
-                if generation == diffGeneration && diff != value { diff = value }
-            } catch { if generation == diffGeneration { fail(error) } }
+                if generation == diffGeneration { diffArrived = generation; if diff != value { diff = value } }
+            } catch { if generation == diffGeneration { diffArrived = generation; fail(error) } }
         }
     }
     func stageFiles(_ files: [ChangedFile], staged: Bool) {
@@ -925,6 +949,18 @@ import QuartzCore
                     view.cacheDisplay(in: view.bounds, to: rep)
                     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: String(shot.dropFirst(5))))
                 }
+            case let shot where shot.hasPrefix("quietshot:"):
+                if let main = NSApp.windows.first(where: { $0.isVisible && $0.frame.width > 800 }), let view = main.contentView?.superview ?? main.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep); try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: String(shot.dropFirst(10))))
+                }
+            case let shot where shot.hasPrefix("scrollshot:"):
+                // Shows every scroller (overlay ones hide when idle) and captures the window while they are visible.
+                func scrollViews(_ view: NSView) -> [NSScrollView] { (view as? NSScrollView).map { [$0] } ?? [] + view.subviews.flatMap(scrollViews) }
+                if let main = NSApp.windows.first(where: { $0.isVisible && $0.frame.width > 800 }), let view = main.contentView?.superview ?? main.contentView {
+                    for scroll in scrollViews(view) { scroll.scrollerStyle = .legacy; scroll.autohidesScrollers = false; scroll.tile(); scroll.flashScrollers() }
+                    try? await Task.sleep(for: .milliseconds(300))
+                    if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) { view.cacheDisplay(in: view.bounds, to: rep); try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: String(shot.dropFirst(11)))) }
+                }
             case "history": route = .history
             case "clone": cloningRepository = true
             case "newRepository": creatingRepository = true
@@ -1001,6 +1037,11 @@ import QuartzCore
                 let unstageAll = await clock.measure { await stageNow(changes.staged, staged: true) }
                 let graph = clock.measure { historyCache = nil; _ = historyModel(search: "", scope: nil) }
                 NSLog("BUTAKE_QA bench files=%d refresh=%@ stageAll=%@ (staged=%d) unstageAll=%@ graph=%@", files.count, "\(refresh)", "\(stageAll)", staged, "\(unstageAll)", "\(graph)")
+            case let name where name.hasPrefix("diffToggle:"): NotificationCenter.default.post(name: .init("butake.qa.diffToggle"), object: Int(name.dropFirst(11)) ?? 0)
+            case let name where name.hasPrefix("collapse:"): let parts = name.dropFirst(9).split(separator: "="); if parts.count == 2 { UserDefaults.standard.set(parts[1] == "1", forKey: parts[0] == "staged" ? "changesStagedCollapsed" : "changesUnstagedCollapsed") }
+            case "textLarger": TextScale.shared.increase()
+            case "textSmaller": TextScale.shared.decrease()
+            case "textReset": TextScale.shared.reset()
             case "resolve": resolveNextConflict()
             default: break
             }
