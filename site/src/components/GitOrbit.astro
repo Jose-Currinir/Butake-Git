@@ -56,6 +56,10 @@ const R = 47 // % del radio para los nodos
 
 <style>
   .orbita { position: relative; width: min(100%, 500px); aspect-ratio: 1; margin-inline: auto; }
+  /* La caja que gira no cuenta como contenido desbordado: sólo se pinta. */
+  .orbita { contain: layout; }
+  /* En teléfonos deja margen para que los nodos que giran no toquen el borde de la pantalla. */
+  @media (max-width: 520px) { .orbita { width: 80%; } }
   .anillo { position: absolute; border-radius: 50%; border: 1px dashed var(--line-strong); opacity: .55; }
   .anillo-externo { inset: 3%; }
   .anillo-medio { inset: 20%; border-style: solid; border-color: var(--line); opacity: 1; background: radial-gradient(circle, color-mix(in srgb, var(--text) 4%, transparent), transparent 70%); }
