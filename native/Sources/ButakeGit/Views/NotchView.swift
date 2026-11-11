@@ -168,7 +168,7 @@ struct NotchView: View {
     private var wings: some View {
         HStack(spacing: 0) {
             HStack(spacing: 4) {
-                if store.busy { ProgressView().controlSize(.mini) }
+                if store.busy { Spinner(size: 10) }
                 else if changes > 0 { Image(systemName: "circle.fill").font(.system(size: 6)).foregroundStyle(Brand.green); Text(changes, format: .number) }
             }.frame(width: NotchModel.wing)
             Spacer(minLength: 0)

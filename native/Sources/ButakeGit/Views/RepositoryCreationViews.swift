@@ -35,7 +35,7 @@ struct NewRepositorySheet: View {
             }.formStyle(.grouped)
             Divider()
             HStack {
-                if working { ProgressView().controlSize(.small) }
+                if working { Spinner(size: 14) }
                 Spacer()
                 Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(L("create")) { Task { await create() } }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!valid || working).accessibilityIdentifier("newRepo.create")
@@ -101,7 +101,7 @@ struct PublishRepositorySheet: View {
                     Picker(L("publishProvider"), selection: $provider) { ForEach(connected, id: \.self) { Text($0.title).tag($0) } }
                         .onChange(of: provider) { _, value in useSSH = value == .bitbucket; Task { await loadOwners() } }
                     Picker(provider == .bitbucket ? L("publishWorkspace") : L("publishOwner"), selection: $owner) { ForEach(owners, id: \.self) { Text($0).tag($0) } }
-                        .overlay(alignment: .trailing) { if loading { ProgressView().controlSize(.small).padding(.trailing, 28) } }
+                        .overlay(alignment: .trailing) { if loading { Spinner(size: 14).padding(.trailing, 28) } }
                     TextField(L("repositoryName"), text: $name).accessibilityIdentifier("publish.name")
                     TextField(L("description"), text: $summary, prompt: Text(L("optional")))
                     Toggle(L("publishPrivate"), isOn: $isPrivate)
@@ -123,7 +123,7 @@ struct PublishRepositorySheet: View {
             }
             Divider()
             HStack {
-                if working { ProgressView().controlSize(.small); Text(L("publishing")).font(.caption).foregroundStyle(.secondary) }
+                if working { Spinner(size: 14); Text(L("publishing")).font(.caption).foregroundStyle(.secondary) }
                 Spacer()
                 Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(working)
                 // Publishing is outward-facing: click only, never Return.

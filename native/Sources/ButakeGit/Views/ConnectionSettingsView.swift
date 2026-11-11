@@ -83,7 +83,7 @@ private struct ProviderAccountCard: View {
             if provider.needsEmail { TextField(L("email"), text: $email).textContentType(.emailAddress).textFieldStyle(.roundedBorder).accessibilityIdentifier("accounts.\(provider.rawValue).email") }
             SecureField(saved ? L("tokenSavedPlaceholder") : L("apiToken"), text: $token).textFieldStyle(.roundedBorder).accessibilityIdentifier("accounts.\(provider.rawValue).token")
             HStack {
-                Button { Task { await testAndSave() } } label: { if testing { ProgressView().controlSize(.small) } else { Text(L("testAndSave")) } }
+                Button { Task { await testAndSave() } } label: { if testing { Spinner(size: 14) } else { Text(L("testAndSave")) } }
                     .buttonStyle(.borderedProminent).disabled(token.isEmpty || (provider.needsEmail && email.isEmpty) || testing)
                     .accessibilityIdentifier("accounts.\(provider.rawValue).save")
                 if saved { Button(L("testConnection")) { Task { await testSaved() } }.disabled(testing); Button(L("disconnect"), role: .destructive) { ProviderVault.remove(provider); saved = false; connectedAs = ""; status = ""; token = "" } }

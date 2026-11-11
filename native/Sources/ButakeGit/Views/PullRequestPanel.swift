@@ -466,7 +466,7 @@ private struct PRChangesView: View {
                 .frame(minWidth: 220, idealWidth: 280, maxWidth: 380)
                 Group {
                     if selected == nil { ContentUnavailableView(L("diff"), systemImage: "doc.text", description: Text(L("chooseFile"))) }
-                    else if diff.isEmpty { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                    else if diff.isEmpty { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
                     else { DiffView(text: diff, path: selected) }
                 }.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
             }

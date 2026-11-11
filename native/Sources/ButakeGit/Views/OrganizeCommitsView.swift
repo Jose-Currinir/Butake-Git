@@ -65,7 +65,7 @@ struct OrganizeCommitsView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if loading { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+        if loading { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
         else if items.isEmpty {
             ContentUnavailableView(L("organizeEmpty"), systemImage: "checkmark.circle", description: Text(error.isEmpty ? L("organizeEmptyDetail") : error)).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -124,7 +124,7 @@ struct OrganizeCommitsView: View {
             }
             Spacer()
             Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-            Button { confirming = true } label: { if applying { ProgressView().controlSize(.small) } else { Text(L("apply")) } }
+            Button { confirming = true } label: { if applying { Spinner(size: 14) } else { Text(L("apply")) } }
                 .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                 .disabled(!changed || applying || resultCount == 0 || items.contains { !$0.drop && $0.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                 .accessibilityIdentifier("organize.apply")
@@ -244,7 +244,7 @@ struct CommitPreview: View {
                 Image(systemName: "doc.text.magnifyingglass").foregroundStyle(Brand.accent)
                 Text(hashes.isEmpty ? L("previewTitle") : String(format: L("previewCount"), hashes.count)).font(.system(size: 12, weight: .semibold))
                 Spacer()
-                if loading { ProgressView().controlSize(.small) }
+                if loading { Spinner(size: 14) }
                 if !text.isEmpty { Button { store.copyToPasteboard(text) } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).help(L("copyDiff")).accessibilityLabel(L("copyDiff")) }
             }.padding(.horizontal, 14).frame(height: 38).background(.bar)
             Divider()

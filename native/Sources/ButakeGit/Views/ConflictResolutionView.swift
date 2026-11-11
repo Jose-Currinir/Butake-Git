@@ -22,7 +22,7 @@ struct ConflictResolutionView: View {
                 DisclosureGroup(L("conflictBase")) { ScrollView { Text(versions.base).font(.system(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 100) }.font(.caption)
                 HStack { Text(L("result")).font(.headline); Spacer(); Button(L("useBoth")) { result = versions.ours.hasSuffix("\n") || versions.ours.isEmpty ? versions.ours + versions.theirs : versions.ours + "\n" + versions.theirs }.controlSize(.small).accessibilityIdentifier("conflict.useBoth"); if unresolved { Label(L("remainingMarkers"), systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) } }
                 TextEditor(text: $result).font(.system(size: 12, design: .monospaced)).frame(minHeight: 180).border(.quaternary).accessibilityLabel(L("result"))
-            } else { ProgressView().frame(maxWidth: .infinity, minHeight: 200) }
+            } else { Spinner(size: 18).frame(maxWidth: .infinity, minHeight: 200) }
             if !error.isEmpty { Text(error).foregroundStyle(.red).font(.caption).textSelection(.enabled) }
             HStack { Spacer(); Button(L("cancel"), role: .cancel) { dismiss() }; Button(L("saveResolution")) { Task { await save() } }.accessibilityIdentifier("conflict.save").buttonStyle(.borderedProminent).disabled(versions == nil || unresolved || saving) }
         }.padding(24).frame(width: 920, height: 680).task { await load() }

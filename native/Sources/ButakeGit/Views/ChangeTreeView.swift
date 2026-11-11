@@ -35,7 +35,7 @@ struct ChangeTreePane: View {
             .padding(.horizontal, 13).frame(height: 35).background(.bar)
             Divider()
             if files.isEmpty && !store.files.isEmpty {
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Spinner(size: 14).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if files.isEmpty {
                 VStack(spacing: 5) { Image(systemName: "checkmark").font(.system(size: 17, weight: .light)).foregroundStyle(.tertiary); Text(L("noUnstaged")).font(.caption2).foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

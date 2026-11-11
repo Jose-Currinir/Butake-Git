@@ -32,7 +32,7 @@ struct DictionaryView: View {
                                 Text(L("catalogNote")).font(.caption).foregroundStyle(.secondary)
                                 HStack { Button(L("inspectConsole")) { store.inspect(entry.name) }.buttonStyle(.borderedProminent).disabled(!installed(entry)); Link(L("officialDocs"), destination: URL(string: entry.documentation)!) }
                                 Button(L("localHelp")) { loadHelp(entry) }.disabled(loadingHelp)
-                                if loadingHelp { ProgressView().controlSize(.small) }
+                                if loadingHelp { Spinner(size: 14) }
                                 if !manual.isEmpty { Text(manual).font(.system(size: 10, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(14).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 9)) }
                             } else { ContentUnavailableView(L("noResults"), systemImage: "book.closed") }
                         }.padding(26).frame(maxWidth: .infinity, alignment: .leading)

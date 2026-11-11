@@ -9,6 +9,9 @@
 - Sin pestañazos al preparar: preparar no bloquea la ventana (los clics se encadenan), la barra lateral ya
   no se deshabilita, el diff no se vacía al cambiar de grupo y el árbol de Carpetas se arma en segundo plano
   (de ~355 ms a menos de 2 cuadros por clic con 3.000 archivos).
+- Sin pantallazos en blanco: los indicadores de carga nativos de AppKit hacían recomponer toda la ventana en
+  cada operación de Git; ahora se dibujan con SwiftUI. La barra de herramientas ya no se reconfigura en cada
+  operación.
 
 ## 1.0.4 · 2026-11-10
 

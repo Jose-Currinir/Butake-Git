@@ -24,7 +24,7 @@ struct RepositoryToolsView: View {
             HStack {
                 Label(store.route.title, systemImage: store.route.icon).font(.headline)
                 Spacer()
-                if loading { ProgressView().controlSize(.small) }
+                if loading { Spinner(size: 14) }
                 toolActions
                 Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh"))
             }.padding(16).background(.bar)

@@ -18,7 +18,7 @@ struct PullRequestsView: View {
                 if let repo { Label("\(repo.provider.title) · \(repo.path)", systemImage: "arrow.triangle.pull").font(.caption).foregroundStyle(.secondary) }
                 Picker(L("pullRequests"), selection: $state) { Text(L("prOpen")).tag(PRState.open); Text(L("prMerged")).tag(PRState.merged); Text(L("prClosed")).tag(PRState.closed) }.pickerStyle(.segmented).frame(width: 300).labelsHidden()
                 Spacer()
-                if loading { ProgressView().controlSize(.small) }
+                if loading { Spinner(size: 14) }
                 Button(L("newPR")) { newPR = true }.disabled(repo == nil).accessibilityIdentifier("pr.new")
                 Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh")).accessibilityLabel(L("refresh"))
             }.padding(14).background(.bar)
@@ -122,7 +122,7 @@ struct PipelinesView: View {
         VStack(spacing: 0) {
             HStack {
                 Label(repo?.provider == .github ? L("githubActions") : L("pipelines"), systemImage: "checkmark.seal").font(.headline)
-                Spacer(); if loading { ProgressView().controlSize(.small) }
+                Spacer(); if loading { Spinner(size: 14) }
                 Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh")).accessibilityLabel(L("refresh"))
             }.padding(14).background(.bar)
             Divider()

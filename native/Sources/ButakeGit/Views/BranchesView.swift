@@ -35,7 +35,7 @@ struct BranchesView: View {
                     Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh")).disabled(loading)
                 }.padding(16).background(.bar)
                 Divider()
-                if loading { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                if loading { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
                 else if !error.isEmpty { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
                 else if let details { branchContent(details) }
                 else { ContentUnavailableView(L("branches"), systemImage: "arrow.triangle.branch", description: Text(L("selectBranch"))).frame(maxHeight: .infinity) }

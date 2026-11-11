@@ -43,7 +43,7 @@ struct HistoryView: View {
                         if store.canLoadMoreHistory && scopedHashes == nil && store.search.isEmpty {
                             Button { store.loadMoreHistory() } label: {
                                 HStack(spacing: 8) {
-                                    if store.loadingHistory { ProgressView().controlSize(.small) } else { Image(systemName: "arrow.down.circle") }
+                                    if store.loadingHistory { Spinner(size: 14) } else { Image(systemName: "arrow.down.circle") }
                                     Text(store.loadingHistory ? L("loading") : L("loadMore"))
                                 }.frame(maxWidth: .infinity).padding(.vertical, 14)
                             }.buttonStyle(.borderless).disabled(store.loadingHistory || store.busy).accessibilityIdentifier("history.loadMore")

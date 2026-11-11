@@ -162,7 +162,7 @@ private struct QuickCommitView: View {
             HStack {
                 Button(L("cancel")) { close() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                if working { ProgressView().controlSize(.small) }
+                if working { Spinner(size: 14) }
                 if repo?.hasRemote == true { Button(L("quickCommitPush")) { Task { await commit(push: true) } }.disabled(!canCommit).accessibilityIdentifier("quick.commitPush") }
                 Button(L("commit")) { Task { await commit(push: false) } }.buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command).disabled(!canCommit).accessibilityIdentifier("quick.commit")
             }.controlSize(.large)
@@ -201,7 +201,7 @@ private struct QuickConfirmView: View {
             HStack {
                 Button(L("cancel")) { close() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                if working { ProgressView().controlSize(.small) }
+                if working { Spinner(size: 14) }
                 Button(operation.title) { Task { await run() } }.buttonStyle(.borderedProminent).tint(operation.destructive ? .orange : Brand.green).keyboardShortcut(operation.action == "push" ? nil : .defaultAction).disabled(working).accessibilityIdentifier("quick.confirm")
             }.controlSize(.large)
         }

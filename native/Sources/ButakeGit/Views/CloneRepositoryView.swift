@@ -68,7 +68,7 @@ struct CloneRepositorySheet: View {
             Spacer(minLength: 0)
             Divider()
             HStack {
-                if cloning { ProgressView().controlSize(.small); Text(L("cloning")).font(.caption).foregroundStyle(.secondary) }
+                if cloning { Spinner(size: 14); Text(L("cloning")).font(.caption).foregroundStyle(.secondary) }
                 Spacer()
                 Button(L("cancel"), role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(cloning)
                 Button(L("cloneAction")) { Task { await clone() } }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
@@ -107,7 +107,7 @@ struct CloneRepositorySheet: View {
             }
             .listStyle(.bordered(alternatesRowBackgrounds: false)).frame(minHeight: 150)
             .overlay {
-                if loadingAccounts { ProgressView() }
+                if loadingAccounts { Spinner(size: 18) }
                 else if accounts.isEmpty { Text(accountErrors.isEmpty ? L("cloneNoRepositories") : accountErrors.joined(separator: "\n")).font(.caption).foregroundStyle(accountErrors.isEmpty ? Color.secondary : Color.orange).multilineTextAlignment(.center).padding() }
             }
             .onChange(of: selected) { _, id in if let repo = accounts.first(where: { $0.id == id }) { url = useSSH ? repo.sshURL : repo.httpsURL; nameEdited = false; name = Self.folderName(url) } }

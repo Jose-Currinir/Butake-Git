@@ -892,6 +892,9 @@ import QuartzCore
                 task.cancel()
             case "checkUpdate": await UpdateService.shared.check(userInitiated: true); NSLog("BUTAKE_QA update phase=%@ latest=%@ available=%d", "\(UpdateService.shared.phase)", UpdateService.shared.latest?.version ?? "-", UpdateService.shared.updateAvailable ? 1 : 0)
             case "installUpdate": await UpdateService.shared.install(); NSLog("BUTAKE_QA update phase=%@", "\(UpdateService.shared.phase)")
+            case "busyflip":
+                // Reproduces what every Git operation does to the window: busy on, short work, busy off.
+                for _ in 0..<3 { busy = true; try? await Task.sleep(for: .milliseconds(250)); busy = false; try? await Task.sleep(for: .milliseconds(700)) }
             case let name where name.hasPrefix("togglebench:"):
                 // Frame monitor while a tree checkbox is pressed repeatedly (stage / unstage a folder).
                 let id = String(name.dropFirst(12)); let benchmark = ScrollBenchmark()

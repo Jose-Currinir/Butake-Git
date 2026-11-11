@@ -50,7 +50,7 @@ struct UpdateSheet: View {
                 Label(message, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             if busy {
-                HStack(spacing: 10) { ProgressView().controlSize(.small); Text(progressText).font(.callout).foregroundStyle(.secondary) }
+                HStack(spacing: 10) { Spinner(size: 14); Text(progressText).font(.callout).foregroundStyle(.secondary) }
             }
             HStack {
                 if let latest = updates.latest { Button(L("updateViewRelease")) { NSWorkspace.shared.open(latest.page) } }

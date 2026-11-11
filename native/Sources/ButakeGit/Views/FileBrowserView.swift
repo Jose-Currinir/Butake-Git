@@ -13,7 +13,7 @@ struct FileBrowserView: View {
         VStack(spacing: 0) {
             HStack { Label(L("files"), systemImage: "folder").font(.headline); Text("\(visible.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary); Spacer(); TextField(L("findFile"), text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 300); Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.help(L("refresh")) }.padding(16).background(.bar)
             Divider()
-            if loading { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+            if loading { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
             else if !error.isEmpty { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
             else {
                 let changed = Dictionary(store.files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
@@ -78,10 +78,10 @@ struct FileEditorView: View {
                 if tab == 0 { CodeEditorView(text: $text, path: path, editable: !saving && store.canWrite).accessibilityLabel(L("fileContent")).accessibilityIdentifier("editor.content") }
                 else if tab == 1 { CodeEditorView(text: .constant(original.content), path: path, editable: false) }
                 else if tab == 3 { MarkdownPreview(source: text) }
-                else if previewLoading { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                else if previewLoading { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
                 else if !dirty { ContentUnavailableView(L("noEditorChanges"), systemImage: "equal.circle").frame(maxHeight: .infinity) }
                 else { DiffView(text: preview, path: path) }
-            } else if error.isEmpty { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+            } else if error.isEmpty { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
             else { ContentUnavailableView(L("operationFailed"), systemImage: "exclamationmark.triangle", description: Text(error)).frame(maxHeight: .infinity) }
             Divider()
             VStack(alignment: .leading, spacing: 10) {

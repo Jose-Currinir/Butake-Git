@@ -35,7 +35,7 @@ struct BranchSyncView: View {
                 }
                 equivalentSection(result)
             } else if loading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView(L("syncTitle"), systemImage: "arrow.left.arrow.right.circle", description: Text(error.isEmpty ? L("syncExplain") : error)).frame(maxHeight: .infinity)
             }

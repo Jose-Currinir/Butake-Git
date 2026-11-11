@@ -25,9 +25,9 @@ struct WorkspaceView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.action("fetch") } label: { Label(L("fetch"), systemImage: "arrow.down.to.line").symbolEffect(.pulse, isActive: store.runningAction == "fetch") }
-                        .disabled(!store.canFetch).help(store.remoteHelp("fetchHelp")).accessibilityIdentifier("toolbar.fetch")
-                    Button { store.action("pull", confirm: true) } label: { Label(L("pull"), systemImage: "arrow.down").symbolEffect(.pulse, isActive: store.runningAction == "pull") }.disabled(!store.canPull).help(store.remoteHelp("pullHelp")).accessibilityIdentifier("toolbar.pull")
-                    Button { store.action("push", confirm: true) } label: { Label(L("push"), systemImage: "arrow.up").symbolEffect(.pulse, isActive: store.runningAction == "push") }.disabled(!store.canPush).help(store.remoteHelp("pushHelp")).accessibilityIdentifier("toolbar.push")
+                        .disabled(store.repository?.hasRemote != true).help(store.remoteHelp("fetchHelp")).accessibilityIdentifier("toolbar.fetch")
+                    Button { store.action("pull", confirm: true) } label: { Label(L("pull"), systemImage: "arrow.down").symbolEffect(.pulse, isActive: store.runningAction == "pull") }.disabled(store.repository?.hasRemote != true).help(store.remoteHelp("pullHelp")).accessibilityIdentifier("toolbar.pull")
+                    Button { store.action("push", confirm: true) } label: { Label(L("push"), systemImage: "arrow.up").symbolEffect(.pulse, isActive: store.runningAction == "push") }.disabled(store.repository?.hasRemote != true || store.onProtectedMain).help(store.remoteHelp("pushHelp")).accessibilityIdentifier("toolbar.push")
                 }
                 // Separate groups instead of a Divider (which renders as a stray dash); the system draws
                 // each group as its own glass capsule.
@@ -38,8 +38,8 @@ struct WorkspaceView: View {
                         Button(L("advancedRebase")) { rebaseSheet = true }.disabled(!store.canWrite)
                         Button(L("openBrowser")) { store.openPR() }
                         Button(L("openFinder")) { if let root = store.repository?.root { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: root) } }
-                    } label: { Label(L("tools"), systemImage: "ellipsis.circle") }.accessibilityIdentifier("toolbar.tools").disabled(store.repository == nil || store.busy || store.terminalActive)
-                    Button { Task { await store.refresh(); store.notify(L("refreshed"), icon: "arrow.clockwise.circle.fill") } } label: { Label(L("refresh"), systemImage: "arrow.clockwise") }.accessibilityIdentifier("toolbar.refresh").disabled(store.repository == nil || store.busy || store.terminalActive)
+                    } label: { Label(L("tools"), systemImage: "ellipsis.circle") }.accessibilityIdentifier("toolbar.tools").disabled(store.repository == nil)
+                    Button { Task { await store.refresh(); store.notify(L("refreshed"), icon: "arrow.clockwise.circle.fill") } } label: { Label(L("refresh"), systemImage: "arrow.clockwise") }.accessibilityIdentifier("toolbar.refresh").disabled(store.repository == nil)
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.showInspector.toggle() } label: { Label(L("inspector"), systemImage: "sidebar.right") }.accessibilityIdentifier("toolbar.inspector")
@@ -71,6 +71,10 @@ struct WorkspaceView: View {
             if store.repository != nil && !store.busy && !store.terminalActive { Task { await store.refresh() } }
         }
         .background(GeometryReader { geometry in Color.clear.onChange(of: geometry.size.width) { _, width in if width < 1120 { store.showInspector = false } } })
+        #if DEBUG || BUTAKE_QA
+        .onAppear { NSLog("BUTAKE_QA workspace appear") }
+        .onDisappear { NSLog("BUTAKE_QA workspace disappear") }
+        #endif
     }
 }
 private struct WorkspaceDetail: View {
@@ -258,7 +262,9 @@ private struct StatusBar: View {
         HStack(spacing: 14) {
             Label(store.repository?.branch ?? L("localOnly"), systemImage: store.onProtectedMain ? "lock" : "arrow.triangle.branch").foregroundStyle(Brand.accent)
             Divider().frame(height: 10)
-            if store.busy { ProgressView().controlSize(.mini).transition(.scale.combined(with: .opacity)) }
+            // Drawn by SwiftUI, not an AppKit ProgressView: inserting that platform view on every Git operation made
+            // AppKit recomposite the window's layers, flashing the whole window blank for ~100 ms.
+            if store.busy { Spinner(size: 10).transition(.opacity) }
             Text(store.status).lineLimit(1).contentTransition(.opacity)
             Spacer()
             if let repo = store.repository {
@@ -461,7 +467,7 @@ struct QueryDiffSheet: View {
                 Button(L("close")) { dismiss() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("diff.close")
             }.padding(.horizontal, 16).padding(.vertical, 12).background(.bar)
             Divider()
-            if !loaded { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+            if !loaded { Spinner(size: 18).frame(maxWidth: .infinity, maxHeight: .infinity) }
             else if text.isEmpty { ContentUnavailableView(L("noDifferences"), systemImage: "equal.circle", description: Text(L("noDifferencesDetail"))).frame(maxWidth: .infinity, maxHeight: .infinity).transition(.opacity) }
             else { DiffView(text: text, path: isFile ? request.title : nil).transition(.opacity).accessibilityIdentifier("diff.content") }
         }
@@ -475,6 +481,20 @@ struct QueryDiffSheet: View {
     }
 }
 
+/// Indeterminate spinner drawn by SwiftUI. Used instead of `Spinner(size: 18)` everywhere: inserting AppKit's progress
+/// indicator made AppKit recomposite the window's layers and flash the whole window blank (~100 ms).
+struct Spinner: View {
+    var size: CGFloat = 14
+    @State private var spin = false
+    var body: some View {
+        Circle().trim(from: 0, to: 0.7).stroke(Color.secondary, style: StrokeStyle(lineWidth: max(1.5, size / 9), lineCap: .round))
+            .frame(width: size, height: size)
+            .rotationEffect(.degrees(spin ? 360 : 0))
+            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spin)
+            .onAppear { spin = true }
+            .accessibilityLabel(L("loading"))
+    }
+}
 /// Indeterminate brand-colored sweep shown while Git is working.
 struct ActivityBar: View {
     let active: Bool

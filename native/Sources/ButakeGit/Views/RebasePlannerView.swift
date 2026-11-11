@@ -14,7 +14,7 @@ struct RebasePlannerView: View {
             Label(L("interactiveRebase"), systemImage: "arrow.triangle.branch").font(.title2.weight(.semibold))
             Text(L("rebaseHelp")).font(.caption).foregroundStyle(.secondary)
             HStack { TextField(L("rebaseBase"), text: $base).textFieldStyle(.roundedBorder); Button(L("loadPlan")) { Task { await load() } }.disabled(base.isEmpty || loading) }
-            if loading { ProgressView().controlSize(.small) }
+            if loading { Spinner(size: 14) }
             if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             List {
                 ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
