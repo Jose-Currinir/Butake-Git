@@ -29,7 +29,7 @@ else APP="/Applications/Butake Git.app"; fi
 
 installed="$( [ -d "${APP}" ] && /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "${APP}/Contents/Info.plist" 2>/dev/null || echo "")"
 api="$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/releases/latest")" || fail "No se pudo consultar GitHub."
-tag="$(printf '%s' "${api}" | plutil -extract tag_name raw -o - - 2>/dev/null)"
+tag="$(printf '%s' "${api}" | plutil -extract tag_name raw -o - - 2>/dev/null)" || fail "No se pudo leer la versión publicada en la respuesta de GitHub."
 latest="${tag#[vV]}"
 [ -n "${latest}" ] || fail "No se encontró la última versión publicada."
 # URL de esa versión exacta: «releases/latest/download» puede seguir sirviendo la anterior por caché.
@@ -73,8 +73,10 @@ got="$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "${WORK}/Bu
 hdiutil detach "${MOUNT}" -force >/dev/null 2>&1 || true
 
 codesign --verify --deep --strict "${WORK}/Butake Git.app" 2>/dev/null || fail "La firma de la app no es válida. No se instaló nada."
-details="$(codesign -dv --verbose=2 "${WORK}/Butake Git.app" 2>&1)"
-grep -q "TeamIdentifier=${TEAM}" <<<"${details}" && grep -q "Identifier=${BUNDLE}" <<<"${details}" || fail "La app no está firmada por Butake SpA. No se instaló nada."
+# Requisito de código que el sistema comprueba contra la cadena de certificados (el mismo que usa la app al
+# actualizarse): certificado Developer ID emitido por Apple, equipo de Butake SpA y este identificador de bundle.
+REQUIREMENT="anchor apple generic and identifier \"${BUNDLE}\" and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"${TEAM}\""
+codesign --verify --deep --strict -R="${REQUIREMENT}" "${WORK}/Butake Git.app" 2>/dev/null || fail "La app no está firmada por Butake SpA. No se instaló nada."
 echo "  ✓ Firma Developer ID de Butake SpA (${TEAM})"
 spctl --assess --type execute "${WORK}/Butake Git.app" 2>/dev/null || fail "macOS no acepta la app como notarizada. No se instaló nada."
 echo "  ✓ Notarizada por Apple"
