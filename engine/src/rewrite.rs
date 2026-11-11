@@ -73,20 +73,39 @@ pub async fn candidates(root: &Path) -> Result<RewriteCandidates> {
     let upstream = git::git(root, &["rev-parse", "--verify", "--quiet", "@{upstream}"])
         .await
         .ok();
+    // Anything a remote already has is published, whether or not this branch tracks it (a branch cut from
+    // a pushed develop has no upstream, yet rewriting develop's commits would duplicate shared history).
+    let published = !git::git(
+        root,
+        &[
+            "for-each-ref",
+            "--count=1",
+            "--format=%(refname)",
+            "refs/remotes/",
+        ],
+    )
+    .await
+    .unwrap_or_default()
+    .trim()
+    .is_empty();
     let limit = format!("-{}", LIMIT + 1);
+    // --no-show-signature: `log.showSignature` would mix verification lines into the records.
     let mut args = vec![
         "log",
+        "--no-show-signature",
         "--first-parent",
         &limit,
         "--format=%H%x1f%P%x1f%an%x1f%at%x1f%B%x1e",
         "HEAD",
+        "--not",
     ];
     if upstream.is_some() {
-        args.extend(["--not", "@{upstream}"]);
+        args.push("@{upstream}");
     }
+    args.push("--remotes");
     let raw = git::git(root, &args).await?;
     let mut commits = Vec::new();
-    let mut boundary = if upstream.is_some() {
+    let mut boundary = if upstream.is_some() || published {
         "upstream"
     } else {
         "limit"
@@ -170,6 +189,12 @@ fn todo(plan: &RewritePlan, dir: &Path) -> Result<String> {
     Ok(lines.join("\n") + "\n")
 }
 
+/// Folder for the files of a rewrite in progress (`<git dir>/butake-rewrite`).
+async fn scratch(root: &Path) -> Result<std::path::PathBuf> {
+    let path = git::git(root, &["rev-parse", "--git-path", "butake-rewrite"]).await?;
+    Ok(root.join(path.trim()))
+}
+
 pub async fn apply(root: &Path, plan: &RewritePlan) -> Result<RewriteResult> {
     let state = git::snapshot(root).await?;
     if state.branch == state.primary_branch && state.main_protected {
@@ -214,10 +239,13 @@ pub async fn apply(root: &Path, plan: &RewritePlan) -> Result<RewriteResult> {
         .unwrap_or(0);
     let backup = format!("refs/butake/backup/{}/{stamp}", current.branch);
     git::git(root, &["update-ref", &backup, &current.head]).await?;
-    let dir = tempfile::tempdir().map_err(|e| error("plan_file", e.to_string()))?;
-    let todo_path = dir.path().join("todo.txt");
-    std::fs::write(&todo_path, todo(plan, dir.path())?)
-        .map_err(|e| error("plan_file", e.to_string()))?;
+    // Inside the git dir, not a temporary folder: when the rebase stops on a conflict, the `exec` lines that
+    // set the new messages still run after «Continuar», so their files must outlive this process.
+    let dir = scratch(root).await?;
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).map_err(|e| error("plan_file", e.to_string()))?;
+    let todo_path = dir.join("todo.txt");
+    std::fs::write(&todo_path, todo(plan, &dir)?).map_err(|e| error("plan_file", e.to_string()))?;
     let editor = format!(
         "cp '{}'",
         todo_path.to_string_lossy().replace('\'', "'\\''")
@@ -239,6 +267,7 @@ pub async fn apply(root: &Path, plan: &RewritePlan) -> Result<RewriteResult> {
     .await;
     match outcome {
         Ok(_) => {
+            let _ = std::fs::remove_dir_all(&dir);
             let head = git::git(root, &["rev-parse", "HEAD"])
                 .await?
                 .trim()
@@ -249,7 +278,7 @@ pub async fn apply(root: &Path, plan: &RewritePlan) -> Result<RewriteResult> {
             let conflicted =
                 git::parse_status(&git::git(root, &["status", "--porcelain=v1", "-z"]).await?)
                     .iter()
-                    .any(|f| f.index == "U" || f.worktree == "U");
+                    .any(git::ChangedFile::conflicted);
             if conflicted {
                 Err(error(
                     "rewrite_conflicts",
@@ -257,6 +286,7 @@ pub async fn apply(root: &Path, plan: &RewritePlan) -> Result<RewriteResult> {
                 ))
             } else {
                 let _ = git::git(root, &["rebase", "--abort"]).await;
+                let _ = std::fs::remove_dir_all(&dir);
                 Err(failure)
             }
         }
@@ -275,6 +305,27 @@ pub async fn undo(root: &Path, backup: &str) -> Result<String> {
     git::git(root, &["rev-parse", "--verify", "--quiet", backup])
         .await
         .map_err(|_| error("invalid_ref", "El respaldo ya no existe."))?;
+    if branch == git::primary_branch(root).await && git::main_protected(root).await {
+        return Err(error(
+            "protected_branch",
+            "main está protegida en este repo.",
+        ));
+    }
+    // Commits made after the rewrite would only survive in the reflog: keep them reachable from a second backup.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    git::git(
+        root,
+        &[
+            "update-ref",
+            &format!("refs/butake/backup/{branch}/undo-{stamp}"),
+            "HEAD",
+        ],
+    )
+    .await?;
+    let _ = std::fs::remove_dir_all(scratch(root).await?);
     git::git(root, &["reset", "--keep", backup]).await
 }
 
@@ -375,5 +426,131 @@ mod tests {
         assert_eq!(apply(root, &stale).await.unwrap_err().code, "stale_plan");
         std::fs::write(root.join("dirty"), "x").unwrap();
         assert_eq!(apply(root, &one).await.unwrap_err().code, "dirty_rewrite");
+    }
+
+    #[tokio::test]
+    async fn published_commits_are_not_candidates_without_an_upstream() {
+        let temp = repo().await;
+        let root = temp.path();
+        let remote = tempfile::tempdir().unwrap();
+        git::git(remote.path(), &["init", "-q", "--bare"])
+            .await
+            .unwrap();
+        git::git(
+            root,
+            &["remote", "add", "origin", &remote.path().to_string_lossy()],
+        )
+        .await
+        .unwrap();
+        git::git(root, &["push", "-q", "origin", "develop"])
+            .await
+            .unwrap();
+        git::git(root, &["config", "log.showSignature", "true"])
+            .await
+            .unwrap();
+        git::git(root, &["switch", "-q", "-c", "feature/x"])
+            .await
+            .unwrap();
+        std::fs::write(root.join("mine"), "mine\n").unwrap();
+        git::git(root, &["add", "mine"]).await.unwrap();
+        git::git(root, &["commit", "-qm", "feat: mine"])
+            .await
+            .unwrap();
+        let found = candidates(root).await.unwrap();
+        let subjects: Vec<_> = found.commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(subjects, ["feat: mine"]);
+        assert_eq!(found.boundary, "upstream");
+    }
+    #[tokio::test]
+    async fn new_messages_survive_a_conflict_and_undo_keeps_later_commits() {
+        let temp = repo().await;
+        let root = temp.path();
+        for (content, message) in [("one\n", "feat: one"), ("two\n", "feat: two")] {
+            std::fs::write(root.join("shared"), content).unwrap();
+            git::git(root, &["add", "shared"]).await.unwrap();
+            git::git(root, &["commit", "-qm", message]).await.unwrap();
+        }
+        std::fs::write(root.join("last"), "last\n").unwrap();
+        git::git(root, &["add", "last"]).await.unwrap();
+        git::git(root, &["commit", "-qm", "wip last"])
+            .await
+            .unwrap();
+        let found = candidates(root).await.unwrap();
+        let hash = |subject: &str| {
+            found
+                .commits
+                .iter()
+                .find(|c| c.subject == subject)
+                .unwrap()
+                .hash
+                .clone()
+        };
+        let keep = |subject: &str, message: Option<&str>| RewriteStep {
+            hashes: vec![hash(subject)],
+            drop: false,
+            message: message.map(String::from),
+        };
+        let mut steps: Vec<RewriteStep> = found
+            .commits
+            .iter()
+            .filter(|c| !["feat: one", "feat: two", "wip last"].contains(&c.subject.as_str()))
+            .map(|c| keep(&c.subject, None))
+            .collect();
+        // "two" before "one": both rewrite the same line, so the rebase stops on a conflict.
+        steps.push(keep("feat: two", None));
+        steps.push(keep("feat: one", None));
+        steps.push(keep("wip last", Some("feat: last, reworded")));
+        let plan = RewritePlan {
+            head: found.head.clone(),
+            base: found.base.clone(),
+            steps,
+        };
+        let failure = apply(root, &plan).await.unwrap_err();
+        assert_eq!(failure.code, "rewrite_conflicts");
+        let backup = failure
+            .detail
+            .rsplit("Respaldo: ")
+            .next()
+            .unwrap()
+            .to_string();
+        for _ in 0..4 {
+            if git::snapshot(root).await.unwrap().operation.is_empty() {
+                break;
+            }
+            std::fs::write(root.join("shared"), "resolved\n").unwrap();
+            git::git(root, &["add", "shared"]).await.unwrap();
+            let _ = git::git(root, &["rebase", "--continue"]).await;
+        }
+        assert!(git::snapshot(root).await.unwrap().operation.is_empty());
+        assert_eq!(
+            git::git(root, &["log", "-1", "--format=%s"])
+                .await
+                .unwrap()
+                .trim(),
+            "feat: last, reworded"
+        );
+        // A commit made after the rewrite stays reachable from a second backup when undoing.
+        std::fs::write(root.join("after"), "after\n").unwrap();
+        git::git(root, &["add", "after"]).await.unwrap();
+        git::git(root, &["commit", "-qm", "feat: after"])
+            .await
+            .unwrap();
+        let later = git::git(root, &["rev-parse", "HEAD"]).await.unwrap();
+        undo(root, &backup).await.unwrap();
+        assert_eq!(
+            git::git(root, &["rev-parse", "HEAD"]).await.unwrap().trim(),
+            found.head
+        );
+        let refs = git::git(
+            root,
+            &[
+                "for-each-ref",
+                "--format=%(objectname)",
+                "refs/butake/backup/develop/",
+            ],
+        )
+        .await
+        .unwrap();
+        assert!(refs.contains(later.trim()));
     }
 }

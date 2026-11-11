@@ -211,6 +211,10 @@ async fn dispatch(r: Value) -> git::Result<Value> {
             .await?;
             Ok(json!("ok"))
         }
+        // `whole`: a file that is new since HEAD, shown complete (staged copy plus later edits) instead of in parts.
+        "diff" if r["whole"] == true => {
+            Ok(json!(git::diff_whole(&root, string(&r, "file")).await?))
+        }
         "diff" => Ok(json!(
             git::diff(
                 &root,
@@ -254,7 +258,7 @@ async fn dispatch(r: Value) -> git::Result<Value> {
             }
             let mut args = vec![prepared.command.as_str()];
             args.extend(prepared.args.iter().map(String::as_str));
-            Ok(json!(git::git(&root, &args).await?))
+            Ok(json!(git::git_console(&root, &args).await?))
         }
         "query" => {
             let args: Vec<String> = serde_json::from_value(r["args"].clone())
@@ -286,6 +290,24 @@ async fn dispatch(r: Value) -> git::Result<Value> {
                     "Esta operación requiere confirmación.",
                 ));
             }
+            // Read-only by construction: nothing here may write files, refs or the reflog.
+            let rest = &args[1..];
+            let writes = rest.iter().any(|a| a.starts_with("--output"))
+                || (command == "tag"
+                    && !matches!(rest.first().map(String::as_str), Some("--list" | "-l")))
+                || (command == "reflog"
+                    && !matches!(rest.first().map(String::as_str), Some("show") | None)
+                    && !rest.first().is_some_and(|a| a.starts_with('-')))
+                || (command == "reflog"
+                    && rest
+                        .iter()
+                        .any(|a| matches!(a.as_str(), "expire" | "delete" | "drop")));
+            if writes {
+                return Err(git::error(
+                    "invalid_query",
+                    "Esta operación requiere confirmación.",
+                ));
+            }
             Ok(json!(
                 git::git(&root, &args.iter().map(String::as_str).collect::<Vec<_>>()).await?
             ))
@@ -304,6 +326,7 @@ async fn dispatch(r: Value) -> git::Result<Value> {
                 string(&r, "file"),
                 r["staged"].as_bool().unwrap_or(false),
                 r["index"].as_u64().unwrap_or(0) as usize,
+                r["expected"].as_str(),
             )
             .await?;
             Ok(json!("ok"))

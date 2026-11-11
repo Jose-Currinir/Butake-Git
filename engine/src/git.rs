@@ -35,6 +35,15 @@ pub struct ChangedFile {
     pub index: String,
     pub worktree: String,
 }
+impl ChangedFile {
+    /// Unmerged entry: any `U`, or both sides added (`AA`) or deleted (`DD`).
+    pub fn conflicted(&self) -> bool {
+        self.index == "U"
+            || self.worktree == "U"
+            || (self.index == "A" && self.worktree == "A")
+            || (self.index == "D" && self.worktree == "D")
+    }
+}
 #[derive(Serialize)]
 pub struct Commit {
     pub hash: String,
@@ -130,50 +139,143 @@ pub enum Action {
     RenameBranch,
 }
 
-pub async fn git(root: &Path, args: &[&str]) -> Result<String> {
-    let mut command = Command::new("git");
+/// Runs a prepared Git command. Waits for the process itself, not for end-of-file on its pipes: a hook that
+/// leaves a background process keeps them open, and waiting for EOF reported a timeout for work that finished.
+/// Output is drained for a short grace period after the exit.
+async fn run(
+    mut command: Command,
+    input: Option<Vec<u8>>,
+    seconds: u64,
+) -> Result<std::process::Output> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     command
-        .current_dir(root)
-        .args(["--no-pager", "--literal-pathspecs"])
-        .args(args)
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = command
+        .spawn()
+        .map_err(|e| error("git_unavailable", e.to_string()))?;
+    let writer = input.map(|payload| {
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        tokio::spawn(async move {
+            let _ = stdin.write_all(&payload).await;
+        })
+    });
+    fn drain<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
+        mut pipe: R,
+    ) -> (Arc<std::sync::Mutex<Vec<u8>>>, tokio::task::JoinHandle<()>) {
+        let buffer = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = buffer.clone();
+        let task = tokio::spawn(async move {
+            let mut chunk = [0u8; 16_384];
+            while let Ok(read) = pipe.read(&mut chunk).await {
+                if read == 0 {
+                    break;
+                }
+                sink.lock().unwrap().extend_from_slice(&chunk[..read]);
+            }
+        });
+        (buffer, task)
+    }
+    let (stdout, stdout_task) = drain(child.stdout.take().expect("piped stdout"));
+    let (stderr, stderr_task) = drain(child.stderr.take().expect("piped stderr"));
+    let status = match tokio::time::timeout(Duration::from_secs(seconds), child.wait()).await {
+        Ok(status) => status.map_err(|e| error("git_unavailable", e.to_string()))?,
+        Err(_) => {
+            let _ = child.start_kill();
+            return Err(error(
+                "timeout",
+                format!("Git excedió {seconds} segundos. Verifica el acceso a la carpeta y actualiza antes de reintentar."),
+            ));
+        }
+    };
+    if let Some(writer) = writer {
+        writer.abort();
+    }
+    for task in [stdout_task, stderr_task] {
+        let abort = task.abort_handle();
+        if tokio::time::timeout(Duration::from_millis(1_500), task)
+            .await
+            .is_err()
+        {
+            abort.abort();
+        }
+    }
+    let stdout = std::mem::take(&mut *stdout.lock().unwrap());
+    let stderr = std::mem::take(&mut *stderr.lock().unwrap());
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+/// Seconds a Git command may run: quick lookups, network transfers and commands that run hooks or check out
+/// large trees (LFS) each get their own limit.
+fn time_limit(args: &[&str]) -> u64 {
+    match args.first().copied() {
+        Some(
+            "rev-parse" | "symbolic-ref" | "--version" | "--exec-path" | "--list-cmds=builtins",
+        ) => 12,
+        // Large repositories over slow links: network transfers get half an hour.
+        Some("clone" | "push" | "pull" | "fetch") => 1_800,
+        // Hooks (pre-commit, post-checkout…) and big checkouts can legitimately take minutes.
+        Some(
+            "commit" | "merge" | "rebase" | "cherry-pick" | "revert" | "switch" | "checkout"
+            | "stash" | "reset" | "am",
+        ) => 900,
+        _ => 120,
+    }
+}
+
+fn base_command(root: &Path, literal_pathspecs: bool) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(root).arg("--no-pager");
+    if literal_pathspecs {
+        command.arg("--literal-pathspecs");
+    }
+    command
         .env("GIT_TERMINAL_PROMPT", "0")
         // Reads never take optional locks or rewrite the index: a GUI watching .git must not trigger itself.
         .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("GIT_EDITOR", "true")
-        .env("GIT_PAGER", "cat")
-        .env("LC_ALL", "C")
-        .kill_on_drop(true);
-    let seconds = if matches!(
-        args.first().copied(),
-        Some("rev-parse" | "symbolic-ref" | "--version" | "--exec-path" | "--list-cmds=builtins")
-    ) {
-        12
-    } else if matches!(
-        args.first().copied(),
-        Some("clone" | "push" | "pull" | "fetch")
-    ) {
-        // Large repositories over slow links: network transfers get half an hour.
-        1_800
+        .env("LC_ALL", "C");
+    command
+}
+
+fn failure_detail(output: &std::process::Output) -> String {
+    let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if detail.is_empty() {
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
     } else {
-        120
-    };
-    let output = tokio::time::timeout(Duration::from_secs(seconds), command.output())
-        .await
-        .map_err(|_| {
-            error(
-                "timeout",
-                format!("Git excedió {seconds} segundos. Verifica el acceso a la carpeta y actualiza antes de reintentar."),
-            )
-        })?
-        .map_err(|e| error("git_unavailable", e.to_string()))?;
+        detail
+    }
+}
+
+async fn git_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
+    let mut command = base_command(root, true);
+    command
+        .args(args)
+        .env("GIT_EDITOR", "true")
+        .env("GIT_PAGER", "cat");
+    let output = run(command, None, time_limit(args)).await?;
     if !output.status.success() {
         return Err(error(
             "git_failed",
             String::from_utf8_lossy(&output.stderr).trim().to_string(),
         ));
     }
+    Ok(output.stdout)
+}
+
+pub async fn git(root: &Path, args: &[&str]) -> Result<String> {
     // Git paths with invalid UTF-8 are rejected instead of targeting another file by lossy conversion.
-    String::from_utf8(output.stdout).map_err(|_| {
+    String::from_utf8(git_bytes(root, args).await?).map_err(|_| {
         error(
             "unsupported_encoding",
             "Este repositorio contiene nombres que no son UTF-8.",
@@ -181,67 +283,54 @@ pub async fn git(root: &Path, args: &[&str]) -> Result<String> {
     })
 }
 
+/// Like `git`, for file content shown to the user: bytes that are not UTF-8 (Latin-1 sources…) are replaced
+/// instead of failing. Never use the result to address paths.
+pub async fn git_lossy(root: &Path, args: &[&str]) -> Result<String> {
+    Ok(String::from_utf8_lossy(&git_bytes(root, args).await?).into_owned())
+}
+
+/// Runs a console command exactly as previewed: pathspecs keep their globs and magic, and the text Git
+/// writes to stderr on success (push, fetch, switch…) is returned after stdout.
+pub async fn git_console(root: &Path, args: &[&str]) -> Result<String> {
+    let mut command = base_command(root, false);
+    command
+        .args(args)
+        .env("GIT_EDITOR", "true")
+        .env("GIT_PAGER", "cat");
+    let output = run(command, None, time_limit(args)).await?;
+    if !output.status.success() {
+        return Err(error("git_failed", failure_detail(&output)));
+    }
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    let extra = String::from_utf8_lossy(&output.stderr);
+    if !extra.trim().is_empty() {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&extra);
+    }
+    Ok(text)
+}
+
 /// Runs Git with extra environment variables (e.g. a non-interactive sequence editor).
 pub async fn git_env(root: &Path, args: &[&str], env: &[(&str, &str)]) -> Result<String> {
-    let mut command = Command::new("git");
-    command
-        .current_dir(root)
-        .args(["--no-pager", "--literal-pathspecs"])
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        // Reads never take optional locks or rewrite the index: a GUI watching .git must not trigger itself.
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("LC_ALL", "C")
-        .kill_on_drop(true);
+    let mut command = base_command(root, true);
+    command.args(args);
     for (key, value) in env {
         command.env(key, value);
     }
-    let output = tokio::time::timeout(Duration::from_secs(300), command.output())
-        .await
-        .map_err(|_| error("timeout", "Git excedió 300 segundos."))?
-        .map_err(|e| error("git_unavailable", e.to_string()))?;
+    let output = run(command, None, time_limit(args).max(300)).await?;
     if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(error(
-            "git_failed",
-            if detail.is_empty() {
-                String::from_utf8_lossy(&output.stdout).trim().to_string()
-            } else {
-                detail
-            },
-        ));
+        return Err(error("git_failed", failure_detail(&output)));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Runs Git feeding `input` on stdin (used for NUL-separated pathspecs, avoiding argv limits).
 pub async fn git_input(root: &Path, args: &[&str], input: &[u8]) -> Result<String> {
-    use tokio::io::AsyncWriteExt;
-    let mut child = Command::new("git")
-        .current_dir(root)
-        .args(["--no-pager", "--literal-pathspecs"])
-        .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        // Reads never take optional locks or rewrite the index: a GUI watching .git must not trigger itself.
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("GIT_EDITOR", "true")
-        .env("LC_ALL", "C")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| error("git_unavailable", e.to_string()))?;
-    let mut stdin = child.stdin.take().expect("piped stdin");
-    let payload = input.to_vec();
-    let writer = tokio::spawn(async move {
-        let _ = stdin.write_all(&payload).await;
-    });
-    let output = tokio::time::timeout(Duration::from_secs(120), child.wait_with_output())
-        .await
-        .map_err(|_| error("timeout", "Git excedió 120 segundos."))?
-        .map_err(|e| error("git_unavailable", e.to_string()))?;
-    let _ = writer.await;
+    let mut command = base_command(root, true);
+    command.args(args).env("GIT_EDITOR", "true");
+    let output = run(command, Some(input.to_vec()), 120).await?;
     if !output.status.success() {
         return Err(error(
             "git_failed",
@@ -373,9 +462,11 @@ pub async fn stage_paths(root: &Path, paths: &[String], unstage: bool) -> Result
             "--pathspec-from-file=-",
             "--pathspec-file-nul",
         ],
+        // No commits yet: `-f` lets a file edited after `git add` leave the index (the working tree is untouched).
         (true, false) => &[
             "rm",
             "--cached",
+            "-f",
             "--quiet",
             "--pathspec-from-file=-",
             "--pathspec-file-nul",
@@ -436,6 +527,9 @@ pub async fn clone(parent: &Path, url: &str, name: &str) -> Result<String> {
     }
     let destination = target.to_string_lossy().to_string();
     git(parent, &["clone", "--", url, &destination]).await.map_err(|failure| {
+        // The folder did not exist before: remove whatever a failed or interrupted clone left behind,
+        // so retrying does not stop at "already exists".
+        let _ = std::fs::remove_dir_all(&target);
         let detail = failure.detail.to_lowercase();
         if detail.contains("authentication") || detail.contains("permission denied") || detail.contains("could not read username") {
             error(
@@ -532,9 +626,17 @@ pub async fn publish(
             "Este repositorio ya tiene un remoto origin con otra dirección. Revísalo en Remotos.",
         ));
     }
-    let mut pushed = Vec::new();
+    let mut pushed: Vec<String> = Vec::new();
+    let primary = primary_branch(root).await;
+    let protected = main_protected(root).await;
     for branch in branches {
         validate_branch(root, branch).await?;
+        if protected && *branch == primary {
+            return Err(error(
+                "protected_branch",
+                format!("{primary} está protegida en este repo: súbela mediante un PR o desactiva la protección en la barra de estado."),
+            ));
+        }
         if git(
             root,
             &[
@@ -552,7 +654,17 @@ pub async fn publish(
         let spec = format!("refs/heads/{branch}:refs/heads/{branch}");
         git(root, &["push", "-u", "origin", &spec])
             .await
-            .map_err(access_failure)?;
+            .map_err(access_failure)
+            .map_err(|mut failure| {
+                if !pushed.is_empty() {
+                    failure.detail = format!(
+                        "{}\n\nRamas que sí se subieron: {}.",
+                        failure.detail,
+                        pushed.join(", ")
+                    );
+                }
+                failure
+            })?;
         pushed.push(branch.clone());
     }
     Ok(pushed)
@@ -760,7 +872,16 @@ pub async fn branch_sync(root: &Path, left: &str, right: &str) -> Result<BranchS
         "--",
     ];
     let base_args = ["merge-base", left, right];
-    let (log, base) = tokio::join!(git(root, &log_args), git(root, &base_args));
+    // Commits only reachable from the left side, in one process (instead of one `merge-base` per commit).
+    let left_only = format!("{right}..{left}");
+    let side_args = ["rev-list", "--no-merges", left_only.as_str(), "--"];
+    let (log, base, side) = tokio::join!(
+        git(root, &log_args),
+        git(root, &base_args),
+        git(root, &side_args)
+    );
+    let side = side.unwrap_or_default();
+    let on_left_side: HashSet<&str> = side.lines().map(str::trim).collect();
     let mut sync = BranchSync {
         left: left.into(),
         right: right.into(),
@@ -788,10 +909,7 @@ pub async fn branch_sync(root: &Path, left: &str, right: &str) -> Result<BranchS
             "<" => sync.only_left.push(commit),
             ">" => sync.only_right.push(commit),
             _ => {
-                let on_left = git(root, &["merge-base", "--is-ancestor", &commit.hash, left])
-                    .await
-                    .is_ok();
-                if on_left {
+                if on_left_side.contains(commit.hash.as_str()) {
                     sync.equivalent_left.push(commit)
                 } else {
                     sync.equivalent_right.push(commit)
@@ -839,42 +957,64 @@ pub async fn copy_commits(root: &Path, target: &str, hashes: &[String]) -> Resul
         ordered.push(validate_commit(root, hash).await?);
     }
     let original = state.branch.clone();
+    // Detached HEAD has no branch to return to: remember the commit instead.
+    let detached = if original == "HEAD" {
+        Some(
+            git(root, &["rev-parse", "--verify", "HEAD"])
+                .await?
+                .trim()
+                .to_string(),
+        )
+    } else {
+        None
+    };
     if original != target {
         git(root, &["switch", target]).await?;
     }
+    let back = || async {
+        match &detached {
+            Some(hash) => git(root, &["switch", "--detach", hash]).await,
+            None if original != target => git(root, &["switch", &original]).await,
+            None => Ok(String::new()),
+        }
+    };
     let mut args = vec!["cherry-pick", "-x"];
     args.extend(ordered.iter().map(String::as_str));
-    match git(root, &args).await {
-        Ok(_) => {
-            if original != target && original != "HEAD" {
-                git(root, &["switch", &original]).await?;
-            }
-            Ok(ordered.len())
+    let mut outcome = git(root, &args).await;
+    let mut skipped = 0;
+    loop {
+        let failure = match outcome {
+            Ok(_) => break,
+            Err(failure) => failure,
+        };
+        let conflicted = parse_status(&git(root, &["status", "--porcelain=v1", "-z"]).await?)
+            .iter()
+            .any(ChangedFile::conflicted);
+        if conflicted {
+            return Err(error(
+                "copy_conflicts",
+                format!("Hay conflictos al copiar a {target}. Quedaste en {target}: resuélvelos, pulsa «Continuar» y luego vuelve a {original}."),
+            ));
         }
-        Err(failure) => {
-            let conflicted = parse_status(&git(root, &["status", "--porcelain=v1", "-z"]).await?)
-                .iter()
-                .any(|f| f.index == "U" || f.worktree == "U");
-            if conflicted {
-                Err(error(
-                    "copy_conflicts",
-                    format!("Hay conflictos al copiar a {target}. Quedaste en {target}: resuélvelos, pulsa «Continuar» y luego vuelve a {original}."),
-                ))
-            } else if failure.detail.contains("empty") {
-                let _ = git(root, &["cherry-pick", "--skip"]).await;
-                if original != target {
-                    let _ = git(root, &["switch", &original]).await;
-                }
-                Err(error("copy_empty", "Uno de los commits ya estaba aplicado en la rama destino; no se copió nada nuevo."))
-            } else {
-                let _ = git(root, &["cherry-pick", "--abort"]).await;
-                if original != target {
-                    let _ = git(root, &["switch", &original]).await;
-                }
-                Err(failure)
-            }
+        if failure.detail.contains("empty") && skipped < ordered.len() {
+            // Already applied on the target: skip it and let the rest of the sequence continue.
+            skipped += 1;
+            outcome = git(root, &["cherry-pick", "--skip"]).await;
+            continue;
         }
+        let _ = git(root, &["cherry-pick", "--abort"]).await;
+        let _ = back().await;
+        return Err(failure);
     }
+    back().await?;
+    let copied = ordered.len() - skipped;
+    if copied == 0 {
+        return Err(error(
+            "copy_empty",
+            "Los commits ya estaban aplicados en la rama destino; no se copió nada nuevo.",
+        ));
+    }
+    Ok(copied)
 }
 
 pub async fn open_root(path: &str) -> Result<PathBuf> {
@@ -1119,10 +1259,18 @@ pub fn parse_branches(text: &str) -> (Vec<Branch>, Vec<RemoteBranch>) {
 }
 
 async fn validate_branch(root: &Path, value: &str) -> Result<()> {
-    if value.starts_with('-') || value.is_empty() {
+    // `@{-1}` and friends pass `check-ref-format --branch` (it expands them) and would name another branch.
+    if value.starts_with('-') || value.is_empty() || value == "@" || value.contains("@{") {
         return Err(error("invalid_ref", "Referencia inválida."));
     }
-    git(root, &["check-ref-format", "--branch", value]).await?;
+    git(root, &["check-ref-format", "--branch", value])
+        .await
+        .map_err(|_| {
+            error(
+                "invalid_ref",
+                format!("«{value}» no es un nombre de rama válido."),
+            )
+        })?;
     Ok(())
 }
 async fn validate_commit(root: &Path, value: &str) -> Result<String> {
@@ -1202,7 +1350,13 @@ pub async fn execute(root: &Path, action: Action, value: &str, confirmed: bool) 
     match action {
         Stage | Unstage => {
             validate_path(value)?;
-            let status = parse_status(&git(root, &["status", "--porcelain=v1", "-z"]).await?);
+            let status = parse_status(
+                &git(
+                    root,
+                    &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+                )
+                .await?,
+            );
             let file = status
                 .iter()
                 .find(|f| f.path == value)
@@ -1216,7 +1370,7 @@ pub async fn execute(root: &Path, action: Action, value: &str, confirmed: bool) 
                 _ if git(root, &["rev-parse", "--verify", "HEAD"]).await.is_ok() => {
                     vec!["restore", "--staged", "--"]
                 }
-                _ => vec!["rm", "--cached", "--"],
+                _ => vec!["rm", "--cached", "-f", "--"],
             };
             args.extend(paths);
             git(root, &args).await
@@ -1234,7 +1388,7 @@ pub async fn execute(root: &Path, action: Action, value: &str, confirmed: bool) 
                 .iter()
                 .find(|f| f.path == value)
                 .ok_or_else(|| error("stale_file", "El archivo ya no figura entre los cambios."))?;
-            if file.index == "U" || file.worktree == "U" {
+            if file.conflicted() {
                 return Err(error(
                     "conflict",
                     "Resuelve el conflicto antes de descartar cambios.",
@@ -1422,12 +1576,7 @@ async fn pull(root: &Path, args: &[&str]) -> Result<String> {
         Err(failure) => {
             let conflicted = parse_status(&git(root, &["status", "--porcelain=v1", "-z"]).await?)
                 .iter()
-                .any(|f| {
-                    f.index == "U"
-                        || f.worktree == "U"
-                        || (f.index == "A" && f.worktree == "A")
-                        || (f.index == "D" && f.worktree == "D")
-                });
+                .any(ChangedFile::conflicted);
             Err(classify_pull_failure(&failure.detail, conflicted))
         }
     }
@@ -1471,7 +1620,8 @@ pub fn classify_pull_failure(detail: &str, conflicted: bool) -> GitError {
     )
 }
 
-pub async fn diff(root: &Path, path: &str, staged: bool) -> Result<String> {
+/// Arguments of the patch for one changed file, or `None` when the file is untracked (no patch exists).
+async fn diff_arguments(root: &Path, path: &str, staged: bool) -> Result<Option<Vec<String>>> {
     validate_path(path)?;
     let files = parse_status(
         &git(
@@ -1485,6 +1635,80 @@ pub async fn diff(root: &Path, path: &str, staged: bool) -> Result<String> {
         .find(|f| f.path == path)
         .ok_or_else(|| error("stale_file", "Actualiza la selección."))?;
     if file.index == "?" {
+        return Ok(None);
+    }
+    // Explicit prefixes: `diff.noprefix` / `diff.mnemonicPrefix` would make `git apply` strip a path component.
+    let mut args: Vec<String> = [
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+    ]
+    .map(String::from)
+    .to_vec();
+    if staged {
+        args.push("--cached".into());
+    }
+    // A moved file is diffed against its old path so Git reports a rename (and only real edits).
+    let original = file.original_path.clone().filter(|_| staged);
+    if original.is_some() {
+        args.push("-M".into());
+    }
+    args.extend(["--".to_string(), path.to_string()]);
+    args.extend(original);
+    Ok(Some(args))
+}
+
+/// The patch exactly as Git wrote it (any encoding), for `git apply`. Untracked files have none.
+pub async fn diff_bytes(root: &Path, path: &str, staged: bool) -> Result<Vec<u8>> {
+    let Some(args) = diff_arguments(root, path, staged).await? else {
+        return Err(error(
+            "invalid_hunk",
+            "Un archivo nuevo se prepara completo, no por bloques.",
+        ));
+    };
+    git_bytes(root, &args.iter().map(String::as_str).collect::<Vec<_>>()).await
+}
+
+/// The working-tree file against the last commit. For a file that was staged when created (an IDE adding a copy)
+/// and edited afterwards, the unstaged patch alone shows the edits made to the staged copy, as if an existing file
+/// had been modified; this one shows what the commit would really bring in: the whole new file.
+pub async fn diff_whole(root: &Path, path: &str) -> Result<String> {
+    validate_path(path)?;
+    let head = git(root, &["rev-parse", "--verify", "--quiet", "HEAD"])
+        .await
+        .unwrap_or_default();
+    // Without commits yet, compare against the empty tree.
+    let base = if head.trim().is_empty() {
+        git(root, &["hash-object", "-t", "tree", "/dev/null"])
+            .await?
+            .trim()
+            .to_string()
+    } else {
+        head.trim().to_string()
+    };
+    git_lossy(
+        root,
+        &[
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            "--no-renames",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            &base,
+            "--",
+            path,
+        ],
+    )
+    .await
+}
+
+pub async fn diff(root: &Path, path: &str, staged: bool) -> Result<String> {
+    let Some(args) = diff_arguments(root, path, staged).await? else {
         let full = std::fs::canonicalize(root.join(path))
             .map_err(|e| error("invalid_path", e.to_string()))?;
         if !full.starts_with(root) || !full.is_file() {
@@ -1497,21 +1721,9 @@ pub async fn diff(root: &Path, path: &str, staged: bool) -> Result<String> {
         }
         let bytes = std::fs::read(full).map_err(|e| error("invalid_path", e.to_string()))?;
         return Ok(String::from_utf8(bytes).unwrap_or_else(|_| "[Archivo binario]".into()));
-    }
-    let mut args = vec!["diff", "--no-ext-diff", "--no-textconv", "--no-color"];
-    if staged {
-        args.push("--cached");
-    }
-    // A moved file is diffed against its old path so Git reports a rename (and only real edits).
-    let original = file.original_path.clone().filter(|_| staged);
-    if original.is_some() {
-        args.push("-M");
-    }
-    args.extend(["--", path]);
-    if let Some(original) = original.as_deref() {
-        args.push(original);
-    }
-    git(root, &args).await
+    };
+    // Content in another encoding (Latin-1…) is shown with replacement characters instead of failing.
+    git_lossy(root, &args.iter().map(String::as_str).collect::<Vec<_>>()).await
 }
 
 pub fn pull_request_url(remote: &str) -> Result<String> {
@@ -1549,6 +1761,35 @@ mod tests {
         assert_eq!(files.len(), 3);
         assert_eq!(files[1].original_path.as_deref(), Some("anterior"));
         assert_eq!(files[2].path, "-opcion");
+    }
+    #[tokio::test]
+    async fn new_file_staged_then_edited_is_shown_whole() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        git(root, &["init", "-b", "develop"]).await.unwrap();
+        git(root, &["config", "user.name", "Test"]).await.unwrap();
+        git(root, &["config", "user.email", "test@example.invalid"])
+            .await
+            .unwrap();
+        // No commits yet: compared against the empty tree.
+        std::fs::write(root.join("first.txt"), "one\n").unwrap();
+        git(root, &["add", "first.txt"]).await.unwrap();
+        assert!(diff_whole(root, "first.txt")
+            .await
+            .unwrap()
+            .contains("+one"));
+        git(root, &["commit", "-m", "base"]).await.unwrap();
+        // Staged as a copy, edited afterwards (status AM).
+        std::fs::write(root.join("copy.txt"), "old a\nold b\nsame\n").unwrap();
+        git(root, &["add", "copy.txt"]).await.unwrap();
+        std::fs::write(root.join("copy.txt"), "new a\nnew b\nsame\n").unwrap();
+        let parts = diff(root, "copy.txt", false).await.unwrap();
+        assert!(parts.contains("-old a") && parts.contains("+new a"));
+        let whole = diff_whole(root, "copy.txt").await.unwrap();
+        assert!(whole.contains("new file mode"));
+        assert!(whole.contains("+new a") && whole.contains("+same"));
+        assert!(!whole.contains("old a"));
+        assert!(diff_whole(root, "../outside").await.is_err());
     }
     #[test]
     fn external_url_is_restricted() {
@@ -2194,5 +2435,175 @@ mod tests {
             "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
         ));
         assert_eq!(denied.code, "ssh_denied");
+    }
+
+    async fn sandbox() -> tempfile::TempDir {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        for args in [
+            vec!["init", "-q", "-b", "develop"],
+            vec!["config", "user.name", "Test"],
+            vec!["config", "user.email", "t@example.invalid"],
+        ] {
+            git(root, &args).await.unwrap();
+        }
+        std::fs::write(root.join("base.txt"), "base\n").unwrap();
+        git(root, &["add", "base.txt"]).await.unwrap();
+        git(root, &["commit", "-qm", "chore: base"]).await.unwrap();
+        temp
+    }
+    async fn commit_file(root: &Path, file: &str, content: &str, message: &str) -> String {
+        std::fs::write(root.join(file), content).unwrap();
+        git(root, &["add", file]).await.unwrap();
+        git(root, &["commit", "-qm", message]).await.unwrap();
+        git(root, &["rev-parse", "HEAD"])
+            .await
+            .unwrap()
+            .trim()
+            .to_string()
+    }
+    #[tokio::test]
+    async fn background_process_left_by_a_hook_does_not_stall_the_commit() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = sandbox().await;
+        let root = temp.path();
+        let hook = root.join(".git/hooks/post-commit");
+        std::fs::write(&hook, "#!/bin/sh\nsleep 30 &\n").unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(root.join("base.txt"), "changed\n").unwrap();
+        git(root, &["add", "base.txt"]).await.unwrap();
+        let started = std::time::Instant::now();
+        execute(root, Action::Commit, "feat: with hook", false)
+            .await
+            .unwrap();
+        assert!(started.elapsed() < Duration::from_secs(15));
+        assert!(git(root, &["log", "-1", "--format=%s"])
+            .await
+            .unwrap()
+            .contains("feat: with hook"));
+    }
+    #[tokio::test]
+    async fn copy_commits_skips_applied_ones_and_returns_from_detached_head() {
+        let temp = sandbox().await;
+        let root = temp.path();
+        git(root, &["branch", "other"]).await.unwrap();
+        let applied = commit_file(root, "a.txt", "a\n", "feat: a").await;
+        let fresh = commit_file(root, "b.txt", "b\n", "feat: b").await;
+        // `other` already has the content of "feat: a".
+        git(root, &["switch", "-q", "other"]).await.unwrap();
+        commit_file(root, "a.txt", "a\n", "feat: a (copy)").await;
+        git(root, &["switch", "-q", "--detach", "develop"])
+            .await
+            .unwrap();
+        let head = git(root, &["rev-parse", "HEAD"]).await.unwrap();
+        // Newest first, as the UI sends them.
+        let copied = copy_commits(root, "other", &[fresh.clone(), applied.clone()])
+            .await
+            .unwrap();
+        assert_eq!(copied, 1);
+        assert_eq!(git(root, &["rev-parse", "HEAD"]).await.unwrap(), head);
+        assert!(git(root, &["symbolic-ref", "-q", "HEAD"]).await.is_err());
+        assert!(git(root, &["log", "-1", "--format=%s", "other"])
+            .await
+            .unwrap()
+            .contains("feat: b"));
+        // Nothing new at all: reported as such, and still back where it started.
+        assert_eq!(
+            copy_commits(root, "other", &[applied])
+                .await
+                .unwrap_err()
+                .code,
+            "copy_empty"
+        );
+        assert_eq!(git(root, &["rev-parse", "HEAD"]).await.unwrap(), head);
+    }
+    #[tokio::test]
+    async fn add_add_conflicts_are_reported_as_conflicts() {
+        let temp = sandbox().await;
+        let root = temp.path();
+        git(root, &["branch", "other"]).await.unwrap();
+        let theirs = commit_file(root, "new.txt", "from develop\n", "feat: new").await;
+        git(root, &["switch", "-q", "other"]).await.unwrap();
+        commit_file(root, "new.txt", "from other\n", "feat: new elsewhere").await;
+        git(root, &["switch", "-q", "develop"]).await.unwrap();
+        assert_eq!(
+            copy_commits(root, "other", &[theirs])
+                .await
+                .unwrap_err()
+                .code,
+            "copy_conflicts"
+        );
+        assert!(status(root).await.unwrap().iter().any(|f| f.conflicted()));
+    }
+    #[tokio::test]
+    async fn unstage_works_before_the_first_commit_for_files_edited_after_add() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        git(root, &["init", "-q", "-b", "develop"]).await.unwrap();
+        for file in ["one.txt", "dir/two.txt"] {
+            std::fs::create_dir_all(root.join("dir")).unwrap();
+            std::fs::write(root.join(file), "first\n").unwrap();
+            git(root, &["add", file]).await.unwrap();
+            std::fs::write(root.join(file), "edited after add\n").unwrap();
+        }
+        stage_paths(root, &["one.txt".into()], true).await.unwrap();
+        execute(root, Action::Unstage, "dir/two.txt", false)
+            .await
+            .unwrap();
+        let files = status(root).await.unwrap();
+        assert!(files.iter().all(|f| f.index == "?"), "{files:?}");
+        assert_eq!(
+            std::fs::read_to_string(root.join("one.txt")).unwrap(),
+            "edited after add\n"
+        );
+        // A file inside a new folder is found by the single-file action too.
+        execute(root, Action::Stage, "dir/two.txt", false)
+            .await
+            .unwrap();
+    }
+    #[tokio::test]
+    async fn branch_names_cannot_be_reflog_shortcuts() {
+        let temp = sandbox().await;
+        let root = temp.path();
+        git(root, &["branch", "main"]).await.unwrap();
+        git(root, &["switch", "-q", "main"]).await.unwrap();
+        git(root, &["switch", "-q", "develop"]).await.unwrap();
+        assert_eq!(
+            execute(root, Action::ForceDeleteBranch, "@{-1}", true)
+                .await
+                .unwrap_err()
+                .code,
+            "invalid_ref"
+        );
+        assert!(git(root, &["rev-parse", "--verify", "refs/heads/main"])
+            .await
+            .is_ok());
+    }
+    #[tokio::test]
+    async fn diff_keeps_prefixes_and_shows_other_encodings() {
+        let temp = sandbox().await;
+        let root = temp.path();
+        git(root, &["config", "diff.noprefix", "true"])
+            .await
+            .unwrap();
+        std::fs::write(root.join("latin.txt"), b"a\xf1o\n").unwrap();
+        git(root, &["add", "latin.txt"]).await.unwrap();
+        git(root, &["commit", "-qm", "latin"]).await.unwrap();
+        std::fs::write(root.join("latin.txt"), b"a\xf1o nuevo\n").unwrap();
+        let text = diff(root, "latin.txt", false).await.unwrap();
+        assert!(text.contains("--- a/latin.txt") && text.contains("+++ b/latin.txt"));
+        assert!(text.contains("nuevo"));
+    }
+    #[tokio::test]
+    async fn console_runner_keeps_globs_and_returns_stderr() {
+        let temp = sandbox().await;
+        let root = temp.path();
+        std::fs::write(root.join("one.rs"), "fn main() {}\n").unwrap();
+        git_console(root, &["add", "*.rs"]).await.unwrap();
+        assert_eq!(status(root).await.unwrap()[0].index, "A");
+        let output = git_console(root, &["switch", "-c", "feature/console"])
+            .await
+            .unwrap();
+        assert!(output.contains("feature/console"), "{output}");
     }
 }

@@ -191,6 +191,48 @@ fn explicitly_protected_ref(value: &str, primary: &str) -> bool {
         || value.ends_with(&format!(":{primary}"))
         || value.ends_with(&format!(":refs/heads/{primary}"))
 }
+/// Commands that reset or move the protected branch while standing on another one.
+fn moves_protected_branch(command: &str, args: &[String], primary: &str) -> bool {
+    let named = |value: &str| value == primary || value == format!("refs/heads/{primary}");
+    // `-C main`, `-Cmain`, `--force-create main`, `--force-create=main`.
+    let forced = |flags: &[&str]| {
+        args.iter().enumerate().any(|(index, arg)| {
+            flags.iter().any(|flag| {
+                (arg == flag && args.get(index + 1).is_some_and(|next| named(next)))
+                    || arg
+                        .strip_prefix(flag)
+                        .is_some_and(|rest| named(rest.trim_start_matches('=')))
+            })
+        })
+    };
+    match command {
+        "switch" => forced(&["-C", "--force-create"]),
+        "checkout" => forced(&["-B"]),
+        "worktree" => forced(&["-B"]),
+        "pull" => args.iter().any(|a| {
+            a.ends_with(&format!(":{primary}")) || a.ends_with(&format!(":refs/heads/{primary}"))
+        }),
+        // `rebase <upstream> <branch>` checks out and rewrites <branch>.
+        "rebase" => {
+            let mut operands = Vec::new();
+            let mut skip = false;
+            for arg in args {
+                if skip {
+                    skip = false;
+                } else if matches!(
+                    arg.as_str(),
+                    "--onto" | "-x" | "--exec" | "-s" | "--strategy" | "-X" | "--strategy-option"
+                ) {
+                    skip = true;
+                } else if !arg.starts_with('-') {
+                    operands.push(arg.as_str());
+                }
+            }
+            operands.len() >= 2 && operands.last().is_some_and(|last| named(last))
+        }
+        _ => false,
+    }
+}
 fn read_command(command: &str) -> bool {
     matches!(
         command,
@@ -327,6 +369,12 @@ pub fn prepare(
                 "branch" | "filter-branch" | "history" | "push" | "send-pack"
             ) && args.iter().any(|a| a == "--mirror" || a == "--all")))
     {
+        return Err(error(
+            "protected_branch",
+            "No se permite modificar main ni múltiples referencias implícitas desde la consola.",
+        ));
+    }
+    if !reads && main_protected && moves_protected_branch(command, &args, primary) {
         return Err(error(
             "protected_branch",
             "No se permite modificar main ni múltiples referencias implícitas desde la consola.",
@@ -675,6 +723,39 @@ mod tests {
         assert!(prepare("commit", "-m test", "master", "master", true).is_err());
         assert!(prepare("branch", "-D master", "develop", "master", true).is_err());
         assert!(prepare("commit", "-m test", "main", "master", true).is_ok());
+    }
+    #[test]
+    fn protected_main_cannot_be_moved_from_another_branch() {
+        for (command, args) in [
+            ("switch", "-C main"),
+            ("switch", "--force-create main develop"),
+            ("checkout", "-B main"),
+            ("checkout", "-Bmain"),
+            ("pull", ". develop:main"),
+            ("rebase", "develop main"),
+            ("rebase", "--onto develop feature main"),
+            ("worktree", "add -B main ../w"),
+            ("branch", "-f main develop"),
+        ] {
+            assert!(
+                prepare(command, args, "develop", "main", true).is_err(),
+                "{command} {args}"
+            );
+        }
+        // Using main only as a base or a source stays allowed.
+        for (command, args) in [
+            ("rebase", "main"),
+            ("rebase", "--onto main develop"),
+            ("switch", "-c feature/x main"),
+            ("pull", "origin main"),
+            ("merge", "main"),
+        ] {
+            assert!(
+                prepare(command, args, "develop", "main", true).is_ok(),
+                "{command} {args}"
+            );
+        }
+        assert!(prepare("switch", "-C main", "develop", "main", false).is_ok());
     }
     #[test]
     fn push_requires_exact_destination_and_no_force() {

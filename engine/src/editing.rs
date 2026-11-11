@@ -1,70 +1,78 @@
 use crate::git::{self, error, Result};
 use serde::Serialize;
-use std::{path::Path, process::Stdio, time::Duration};
-use tokio::{io::AsyncWriteExt, process::Command};
+use std::path::Path;
 
-pub fn select_hunk(diff: &str, index: usize) -> Result<String> {
-    let mut header = String::new();
-    let mut hunks: Vec<String> = Vec::new();
-    for line in diff.split_inclusive('\n') {
-        if line.starts_with("@@ ") {
-            hunks.push(line.into());
+fn stale_hunk() -> git::GitError {
+    error(
+        "invalid_hunk",
+        "El bloque cambió o no admite staging parcial. Actualiza las diferencias.",
+    )
+}
+/// Header plus the `index`-th hunk of a single-file patch, byte for byte (the patch may not be UTF-8).
+/// `expected` is the hunk's `@@ … @@` line as the UI showed it: a different one means the file changed since.
+pub fn select_hunk_bytes(
+    diff: &[u8],
+    index: usize,
+    expected: Option<&str>,
+) -> Result<(Vec<u8>, Vec<u8>)> {
+    let mut header = Vec::new();
+    let mut hunks: Vec<Vec<u8>> = Vec::new();
+    for line in diff.split_inclusive(|byte| *byte == b'\n') {
+        if line.starts_with(b"@@ ") {
+            hunks.push(line.to_vec());
         } else if let Some(hunk) = hunks.last_mut() {
-            hunk.push_str(line);
+            hunk.extend_from_slice(line);
         } else {
-            header.push_str(line);
+            header.extend_from_slice(line);
         }
     }
-    let selected = hunks.get(index).ok_or_else(|| {
-        error(
-            "invalid_hunk",
-            "El bloque cambió o no admite staging parcial. Actualiza las diferencias.",
-        )
-    })?;
-    Ok(header + selected)
+    let selected = hunks.into_iter().nth(index).ok_or_else(stale_hunk)?;
+    if let Some(expected) = expected.map(str::trim).filter(|e| !e.is_empty()) {
+        let first = selected.split(|byte| *byte == b'\n').next().unwrap_or(&[]);
+        let first = String::from_utf8_lossy(first);
+        // Compare the ranges only: the text after the second `@@` is context that display code may trim.
+        let ranges = |line: &str| line.splitn(3, "@@").nth(1).map(|r| r.trim().to_string());
+        if ranges(first.trim_end_matches('\r')) != ranges(expected) {
+            return Err(stale_hunk());
+        }
+    }
+    Ok((header, selected))
 }
-async fn apply(root: &Path, patch: &str, reverse: bool, check: bool) -> Result<()> {
-    let mut command = Command::new("git");
-    command
-        .current_dir(root)
-        .args(["--no-pager", "apply", "--cached"]);
+async fn apply(root: &Path, patch: &[u8], reverse: bool, check: bool) -> Result<()> {
+    // --whitespace=nowarn: `apply.whitespace=fix` must not rewrite what the user chose to stage.
+    let mut args = vec!["apply", "--cached", "--whitespace=nowarn", "-p1"];
     if reverse {
-        command.arg("--reverse");
+        args.push("--reverse");
     }
     if check {
-        command.arg("--check");
+        args.push("--check");
     }
-    let mut child = command
-        .arg("-")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| error("git_unavailable", e.to_string()))?;
-    if let Some(mut input) = child.stdin.take() {
-        input
-            .write_all(patch.as_bytes())
-            .await
-            .map_err(|e| error("git_failed", e.to_string()))?;
-    }
-    let output = tokio::time::timeout(Duration::from_secs(30), child.wait_with_output())
-        .await
-        .map_err(|_| error("timeout", "Git excedió el tiempo disponible."))?
-        .map_err(|e| error("git_failed", e.to_string()))?;
-    if !output.status.success() {
-        return Err(error(
-            "git_failed",
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ));
-    }
-    Ok(())
+    args.push("-");
+    git::git_input(root, &args, patch).await.map(|_| ())
 }
-pub async fn stage_hunk(root: &Path, file: &str, staged: bool, index: usize) -> Result<()> {
-    let diff = git::diff(root, file, staged).await?;
-    let patch = select_hunk(&diff, index)?;
-    apply(root, &patch, staged, true).await?;
-    apply(root, &patch, staged, false).await
+pub async fn stage_hunk(
+    root: &Path,
+    file: &str,
+    staged: bool,
+    index: usize,
+    expected: Option<&str>,
+) -> Result<()> {
+    let diff = git::diff_bytes(root, file, staged).await?;
+    let (mut header, hunk) = select_hunk_bytes(&diff, index, expected)?;
+    if header.windows(13).any(|w| w == b"\nrename from ") {
+        // A staged rename: reversing its header with one hunk would undo the whole move. The hunk is applied
+        // as a plain edit of the new path instead, so only that block leaves the index.
+        if file
+            .chars()
+            .any(|c| !c.is_ascii() || c.is_control() || c == '"' || c == '\\')
+        {
+            return Err(stale_hunk());
+        }
+        header = format!("diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n").into_bytes();
+    }
+    header.extend_from_slice(&hunk);
+    apply(root, &header, staged, true).await?;
+    apply(root, &header, staged, false).await
 }
 #[derive(Serialize)]
 pub struct ConflictVersions {
@@ -115,7 +123,12 @@ pub async fn conflict(root: &Path, file: &str) -> Result<ConflictVersions> {
     let mut versions = Vec::new();
     for stage in [1, 2, 3] {
         let spec = format!(":{stage}:{file}");
-        versions.push(git::git(root, &["show", &spec]).await.unwrap_or_default());
+        // A side that does not exist (added on one branch only) reads as empty; other encodings are shown lossy.
+        versions.push(
+            git::git_lossy(root, &["show", &spec])
+                .await
+                .unwrap_or_default(),
+        );
     }
     let working = std::fs::read_to_string(full).map_err(|_| {
         error(
@@ -133,9 +146,18 @@ pub async fn conflict(root: &Path, file: &str) -> Result<ConflictVersions> {
 pub async fn resolve(root: &Path, file: &str, content: &str, expected: &str) -> Result<()> {
     assert_conflict(root, file).await?;
     let full = checked_path(root, file)?;
-    if content.lines().any(|line| {
-        line.starts_with("<<<<<<< ") || line.starts_with("=======") || line.starts_with(">>>>>>> ")
-    }) {
+    if content.len() > 8_000_000 {
+        return Err(error(
+            "invalid_content",
+            "El resultado es demasiado grande para guardarlo desde aquí.",
+        ));
+    }
+    // A line of `=======` alone is legitimate content (Markdown/RST headings): only the opening and closing
+    // markers prove an unresolved conflict.
+    if content
+        .lines()
+        .any(|line| line.starts_with("<<<<<<< ") || line.starts_with(">>>>>>> "))
+    {
         return Err(error(
             "conflict_markers",
             "Todavía hay marcadores de conflicto en el resultado.",
@@ -184,12 +206,121 @@ mod tests {
             .replace("line 2\n", "change first\n")
             .replace("line 36\n", "change second\n");
         std::fs::write(root.join("file.txt"), text).unwrap();
-        stage_hunk(root, "file.txt", false, 0).await.unwrap();
+        stage_hunk(root, "file.txt", false, 0, None).await.unwrap();
         let staged = git::diff(root, "file.txt", true).await.unwrap();
         assert!(staged.contains("+change first"));
         assert!(!staged.contains("+change second"));
-        stage_hunk(root, "file.txt", true, 0).await.unwrap();
+        stage_hunk(root, "file.txt", true, 0, None).await.unwrap();
         assert!(git::diff(root, "file.txt", true).await.unwrap().is_empty());
-        assert!(stage_hunk(root, "file.txt", false, 8).await.is_err());
+        assert!(stage_hunk(root, "file.txt", false, 8, None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn hunk_staging_survives_noprefix_other_encodings_and_checks_the_expected_block() {
+        let temp = repository().await;
+        let root = temp.path();
+        git::git(root, &["config", "diff.noprefix", "true"])
+            .await
+            .unwrap();
+        git::git(root, &["config", "apply.whitespace", "fix"])
+            .await
+            .unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        let base: Vec<u8> = (0..40)
+            .flat_map(|n| {
+                format!("l\u{ed}nea {n}\n")
+                    .chars()
+                    .map(|c| c as u8)
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for file in ["src/a.txt", "a.txt"] {
+            std::fs::write(root.join(file), &base).unwrap();
+            git::git(root, &["add", file]).await.unwrap();
+        }
+        git::git(root, &["commit", "-qm", "latin"]).await.unwrap();
+        let mut edited = b"primero   \n".to_vec();
+        edited.extend_from_slice(&base);
+        edited.extend_from_slice(b"ultimo\n");
+        std::fs::write(root.join("src/a.txt"), &edited).unwrap();
+        // A block that is not the one on screen is refused.
+        assert_eq!(
+            stage_hunk(root, "src/a.txt", false, 0, Some("@@ -9,9 +9,9 @@"))
+                .await
+                .unwrap_err()
+                .code,
+            "invalid_hunk"
+        );
+        let shown = git::diff(root, "src/a.txt", false).await.unwrap();
+        let header = shown.lines().find(|l| l.starts_with("@@ ")).unwrap();
+        stage_hunk(root, "src/a.txt", false, 0, Some(header))
+            .await
+            .unwrap();
+        let files = git::status(root).await.unwrap();
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert_eq!(files[0].path, "src/a.txt");
+        assert_eq!(
+            (files[0].index.as_str(), files[0].worktree.as_str()),
+            ("M", "M")
+        );
+        // Trailing whitespace is staged as written, and the Latin-1 bytes are intact.
+        let staged = std::process::Command::new("git")
+            .current_dir(root)
+            .args(["show", ":src/a.txt"])
+            .output()
+            .unwrap()
+            .stdout;
+        let mut expected = b"primero   \n".to_vec();
+        expected.extend_from_slice(&base);
+        assert_eq!(staged, expected);
+    }
+    #[tokio::test]
+    async fn unstaging_one_hunk_of_a_staged_rename_keeps_the_rename() {
+        let temp = repository().await;
+        let root = temp.path();
+        let text = std::fs::read_to_string(root.join("file.txt"))
+            .unwrap()
+            .replace("line 2\n", "change first\n")
+            .replace("line 36\n", "change second\n");
+        git::git(root, &["mv", "file.txt", "moved.txt"])
+            .await
+            .unwrap();
+        std::fs::write(root.join("moved.txt"), text).unwrap();
+        git::git(root, &["add", "moved.txt"]).await.unwrap();
+        stage_hunk(root, "moved.txt", true, 0, None).await.unwrap();
+        let files = git::status(root).await.unwrap();
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert_eq!(files[0].index, "R");
+        assert_eq!(files[0].original_path.as_deref(), Some("file.txt"));
+        let staged = git::git(root, &["show", ":moved.txt"]).await.unwrap();
+        assert!(staged.contains("line 2\n") && staged.contains("change second"));
+    }
+    #[tokio::test]
+    async fn resolution_accepts_setext_headings_but_not_real_markers() {
+        let temp = repository().await;
+        let root = temp.path().canonicalize().unwrap();
+        git::git(&root, &["switch", "-q", "-c", "other"])
+            .await
+            .unwrap();
+        std::fs::write(root.join("file.txt"), "theirs\n").unwrap();
+        git::git(&root, &["commit", "-qam", "theirs"])
+            .await
+            .unwrap();
+        git::git(&root, &["switch", "-q", "develop"]).await.unwrap();
+        std::fs::write(root.join("file.txt"), "ours\n").unwrap();
+        git::git(&root, &["commit", "-qam", "ours"]).await.unwrap();
+        assert!(git::git(&root, &["merge", "other"]).await.is_err());
+        let loaded = conflict(&root, "file.txt").await.unwrap();
+        assert_eq!(
+            resolve(&root, "file.txt", "<<<<<<< ours\nx\n", &loaded.working)
+                .await
+                .unwrap_err()
+                .code,
+            "conflict_markers"
+        );
+        resolve(&root, "file.txt", "Title\n=======\nbody\n", &loaded.working)
+            .await
+            .unwrap();
+        assert_eq!(git::status(&root).await.unwrap()[0].index, "M");
     }
 }
