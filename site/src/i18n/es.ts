@@ -96,6 +96,7 @@ export const t = {
   },
   galeria: {
     titulo: 'Y mucho más',
+    otroModo: 'Butake Git con el tema Drácula, en claro y en oscuro',
     items: [
       { icono: 'git-merge-line', texto: 'Asistente para bajar cambios y resolver conflictos' },
       { icono: 'list-ordered', texto: 'Organizar commits: combinar, reordenar, editar' },

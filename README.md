@@ -149,7 +149,7 @@ Cambios y commits por bajar o subir junto a la cámara. Al pasar el cursor: camb
 
 Archivos con editor · Worktrees · Etiquetas · Stash · Remotos · Reflog en lenguaje humano · Consola Git con terminal nativa · Diccionario de 152 comandos en español · Modo oscuro.
 
-![Modo oscuro](docs/presentacion/oscuro.png)
+![Modo oscuro](docs/presentacion/historial-oscuro.png)
 
 ---
 
