@@ -43,7 +43,20 @@ private struct FileGroupPane: View {
     static let window = 150
     @State private var showAll = false
     var visible: [ChangedFile] { showAll || files.count <= Self.window ? files : Array(files.prefix(Self.window)) }
-    var selection: Binding<String?> { Binding(get: { store.stagedSelection == staged ? store.selectedFile?.path : nil }, set: { path in if let file = files.first(where: { $0.path == path }) { store.selectFile(file, staged: staged) } }) }
+    /// Several files with ⇧/⌘; the diff follows the last file added to the selection.
+    @State private var picked: Set<String> = []
+    @State private var confirmingDiscard = false
+    /// The accent (blue) selection only shows while the list has focus; otherwise it is a light gray.
+    @FocusState private var listFocused: Bool
+    @Environment(\.controlActiveState) private var windowState
+    var selection: Binding<Set<String>> {
+        Binding(get: { picked }, set: { next in
+            let added = next.subtracting(picked)
+            picked = next
+            if let path = added.first ?? (next.count == 1 ? next.first : nil), let file = files.first(where: { $0.path == path }) { store.selectFile(file, staged: staged) }
+        })
+    }
+    var pickedFiles: [ChangedFile] { files.filter { picked.contains($0.path) } }
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -52,6 +65,13 @@ private struct FileGroupPane: View {
                 Text("\(files.count)").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.vertical, 2).background(.quaternary.opacity(0.7), in: Capsule()).countTransition(files.count)
                 Spacer(minLength: 0)
                 if !files.isEmpty { GroupTotals(store: store, files: files, staged: staged).transition(.opacity) }
+                if !staged {
+                    Button { store.discardFiles(pickedFiles) } label: { Image(systemName: "arrow.uturn.backward") }
+                        .buttonStyle(.borderless).frame(width: 22, height: 22)
+                        .help(picked.isEmpty ? L("discardSelectedHelp") : String(format: L("discardCount"), pickedFiles.count))
+                        .accessibilityLabel(L("discardSelected")).accessibilityIdentifier("changes.discardSelected")
+                        .disabled(picked.isEmpty || store.busy || store.terminalActive)
+                }
                 Button { store.stageFiles(files, staged: staged) } label: { Image(systemName: staged ? "minus" : "plus") }.buttonStyle(.borderless).frame(width: 22, height: 22).help(L(staged ? "unstageAll" : "stageAll")).accessibilityLabel(L(staged ? "unstageAll" : "stageAll")).accessibilityIdentifier(staged ? "changes.unstageAll" : "changes.stageAll").disabled(files.isEmpty || store.busy || store.terminalActive)
             }.padding(.horizontal, 13).frame(height: 35).background(.bar).animation(files.count < WorkspaceStore.animationLimit ? .snappy : nil, value: files.count)
             Divider()
@@ -59,7 +79,7 @@ private struct FileGroupPane: View {
             else {
                 List(selection: selection) {
                     ForEach(visible) { file in
-                        FileRow(store: store, file: file, staged: staged)
+                        FileRow(store: store, file: file, staged: staged, onAccent: listFocused && windowState == .key && picked.contains(file.path))
                             .tag(file.path)
                             .accessibilityIdentifier("file.\(staged ? "staged" : "unstaged").\(file.path)")
                     }
@@ -72,26 +92,32 @@ private struct FileGroupPane: View {
                         .accessibilityIdentifier(staged ? "changes.showAllStaged" : "changes.showAllUnstaged")
                     }
                 }
+                .focused($listFocused)
                 .contextMenu(forSelectionType: String.self) { paths in
-                    if let file = files.first(where: { paths.contains($0.path) }) {
-                        if file.conflict { Button(L("resolveConflict")) { onResolve(file) } }
-                        Button(L(staged ? "unstage" : "stage")) { store.action(staged ? "unstage" : "stage", value: file.path) }
-                        if !staged && !file.conflict { Button(L("discardChanges"), role: .destructive) { store.discard(file) } }
-                        Divider()
-                        Button(L("copyPath")) { store.copyToPasteboard(file.path) }
-                        Button(L("openFinder")) { if let root = store.repository?.root { NSWorkspace.shared.selectFile(URL(fileURLWithPath: root).appendingPathComponent(file.path).path, inFileViewerRootedAtPath: root) } }
-                        Button(L("inspectConsole")) { store.inspect("diff", arguments: "\(staged ? "--cached " : "")-- \(shellQuote(file.path))") }
-                        Button(L("fileHistory")) { store.showDiff(file.path, subtitle: L("fileHistory"), args: ["log", "--follow", "--patch", "--no-ext-diff", "--no-color", "-n", "30", "--format=%x01%h %s · %an", "--", file.path]) }
-                    }
+                    FileContextMenu(store: store, files: files.filter { paths.contains($0.path) }, staged: staged, onResolve: onResolve)
                 } primaryAction: { paths in
                     // Double-click moves the file between panels.
                     if let file = files.first(where: { paths.contains($0.path) }), !file.conflict { store.action(staged ? "unstage" : "stage", value: file.path) }
                     else if let file = files.first(where: { paths.contains($0.path) }) { onResolve(file) }
                 }
                 .onKeyPress(.space) {
-                    guard store.stagedSelection == staged, let file = store.selectedFile, files.contains(file), !file.conflict, !store.busy else { return .ignored }
-                    store.action(staged ? "unstage" : "stage", value: file.path); return .handled
+                    let targets = pickedFiles.filter { !$0.conflict }
+                    guard !targets.isEmpty, !store.busy else { return .ignored }
+                    store.stageFiles(targets, staged: staged); return .handled
                 }
+                // Keep the highlight in sync with the diff: a file chosen elsewhere, or the other panel taking over.
+                .onChange(of: store.selectedFile?.path) { _, path in
+                    guard let path else { picked = []; return }
+                    if store.stagedSelection != staged { picked = [] } else if !picked.contains(path) { picked = [path] }
+                }
+                .onChange(of: store.stagedSelection) { _, side in if side != staged { picked = [] } }
+                #if DEBUG || BUTAKE_QA
+                // QA: focus this list and select its first files, as ⇧-click would.
+                .onReceive(NotificationCenter.default.publisher(for: .init("butake.qa.pickFiles"))) { note in
+                    guard !staged, let count = note.object as? Int else { return }
+                    listFocused = true; picked = Set(visible.prefix(count).map(\.path))
+                }
+                #endif
                 .listStyle(.inset).scrollIndicators(.automatic).scrollBounceBehavior(.basedOnSize)
                 // A file chosen elsewhere (search, Review, notch) beyond the first rows expands the list.
                 .onChange(of: store.selectedFile?.path) { _, path in
@@ -100,6 +126,39 @@ private struct FileGroupPane: View {
                 .transition(.opacity)
             }
         }.background(.background).animation(.smooth(duration: 0.25), value: files.isEmpty)
+    }
+}
+/// Right-click on one or several files: staging, discarding, history and Finder, with icons.
+private struct FileContextMenu: View {
+    let store: WorkspaceStore; let files: [ChangedFile]; let staged: Bool; let onResolve: (ChangedFile) -> Void
+    var root: URL? { store.repository.map { URL(fileURLWithPath: $0.root) } }
+    var body: some View {
+        let movable = files.filter { !$0.conflict }
+        if files.count == 1, let file = files.first, file.conflict {
+            Button { onResolve(file) } label: { Label(L("resolveConflict"), systemImage: "exclamationmark.triangle") }
+        }
+        if !movable.isEmpty {
+            Button { store.stageFiles(movable, staged: staged) } label: {
+                Label(movable.count == 1 ? L(staged ? "unstage" : "stage") : String(format: L(staged ? "unstageCount" : "stageCount"), movable.count), systemImage: staged ? "minus.circle" : "plus.circle")
+            }
+            if !staged {
+                Button(role: .destructive) { store.discardFiles(movable) } label: {
+                    Label(movable.count == 1 ? L("discardChanges") + "…" : String(format: L("discardCount"), movable.count), systemImage: "arrow.uturn.backward")
+                }
+            }
+        }
+        Divider()
+        if files.count == 1, let file = files.first {
+            Button { store.showFileHistory(file.path) } label: { Label(L("fileCommits"), systemImage: "clock.arrow.circlepath") }
+            Button { store.showDiff(file.path, subtitle: L("fileHistory"), args: ["log", "--follow", "--patch", "--no-ext-diff", "--no-color", "-n", "30", "--format=%x01%h %s · %an", "--", file.path]) } label: { Label(L("fileHistory"), systemImage: "doc.text.magnifyingglass") }
+            Divider()
+            Button { if let url = root?.appendingPathComponent(file.path) { NSWorkspace.shared.open(url) } } label: { Label(L("openDefault"), systemImage: "arrow.up.forward.app") }
+        }
+        Button { if let root { NSWorkspace.shared.activateFileViewerSelecting(files.map { root.appendingPathComponent($0.path) }) } } label: { Label(L("openFinder"), systemImage: "folder") }
+        Button { store.copyToPasteboard(files.map(\.path).joined(separator: "\n")) } label: { Label(files.count == 1 ? L("copyPath") : L("copyPaths"), systemImage: "doc.on.doc") }
+        if files.count == 1, let file = files.first {
+            Button { store.inspect("diff", arguments: "\(staged ? "--cached " : "")-- \(shellQuote(file.path))") } label: { Label(L("inspectConsole"), systemImage: "terminal") }
+        }
     }
 }
 /// Group line totals in their own view: reading every file's stats in the pane body re-evaluated the whole
@@ -114,22 +173,24 @@ private struct GroupTotals: View {
 }
 private struct FileRow: View {
     let store: WorkspaceStore; let file: ChangedFile; let staged: Bool
+    /// Selected on an accent background: figures, badge and buttons switch to white for contrast.
+    var onAccent = false
     @State private var hovering = false
     var code: String { let code = staged ? file.index : file.worktree; return code == "?" ? "A" : code }
     var color: Color { file.kind.color }
     var body: some View {
         HStack(spacing: 8) {
-            Group { if file.conflict { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.system(size: 12)) } else { FileTypeIcon(path: file.path, size: 15) } }.frame(width: 16)
+            Group { if file.conflict { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.system(size: 12)) } else { FileTypeIcon(path: file.path, size: 15, monochrome: onAccent) } }.frame(width: 16)
             VStack(alignment: .leading, spacing: 3) { Text(file.name).font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle).strikethrough(code == "D", color: .secondary); if file.kind == .renamed, let original = file.originalPath { Text(String(format: L("movedFrom"), original)).font(.system(size: 9)).foregroundStyle(.purple).lineLimit(1).truncationMode(.head) } else if !file.directory.isEmpty { Text(file.directory).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) } }
             Spacer(minLength: 3)
-            if let stats = store.statBox(file, staged: staged).value, !hovering { StatsBadge(stats: stats).transition(.opacity) }
+            if let stats = store.statBox(file, staged: staged).value, !hovering { StatsBadge(stats: stats, inverted: onAccent).transition(.opacity) }
             else if file.index == "?" && !hovering { Text(L("newFile")).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary) }
             if hovering && !staged && !file.conflict {
-                Button { store.discard(file) } label: { Image(systemName: "arrow.uturn.backward.circle").font(.system(size: 13)) }.buttonStyle(.borderless).foregroundStyle(.secondary).help(L("discardChanges")).disabled(store.busy || store.terminalActive)
+                Button { store.discard(file) } label: { Image(systemName: "arrow.uturn.backward.circle").font(.system(size: 13)) }.buttonStyle(.borderless).foregroundStyle(onAccent ? Color.white : Color.secondary).help(L("discardChanges")).disabled(store.busy || store.terminalActive)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
-            Text(code).font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(color).frame(width: 16, height: 16).background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 4)).help(file.kind.title)
-            Button { store.action(staged ? "unstage" : "stage", value: file.path) } label: { Image(systemName: staged ? "minus.circle.fill" : "plus.circle.fill").font(.system(size: 14)).symbolRenderingMode(.hierarchical) }.buttonStyle(.borderless).foregroundStyle(hovering ? (staged ? Color.orange : Brand.accent) : Color.secondary).scaleEffect(hovering ? 1.1 : 1).help(L(staged ? "unstage" : "stage")).disabled(store.busy || store.terminalActive || file.conflict)
+            Text(code).font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(onAccent ? Color.white : color).frame(width: 16, height: 16).background(onAccent ? Color.white.opacity(0.22) : color.opacity(0.12), in: RoundedRectangle(cornerRadius: 4)).help(file.kind.title)
+            Button { store.action(staged ? "unstage" : "stage", value: file.path) } label: { Image(systemName: staged ? "minus.circle.fill" : "plus.circle.fill").font(.system(size: 14)).symbolRenderingMode(.hierarchical) }.buttonStyle(.borderless).foregroundStyle(onAccent ? Color.white : hovering ? (staged ? Color.orange : Brand.accent) : Color.secondary).scaleEffect(hovering ? 1.1 : 1).help(L(staged ? "unstage" : "stage")).disabled(store.busy || store.terminalActive || file.conflict)
         }
         .padding(.vertical, 3).contentShape(Rectangle())
         .onHover { hover in withAnimation(.easeOut(duration: 0.14)) { hovering = hover } }

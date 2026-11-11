@@ -193,4 +193,21 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(release.checksum?.absoluteString, "https://example.com/a.sha256")
         XCTAssertNotNil(release.published)
     }
+    func testSearchQueryParsing() {
+        let query = SearchQuery("tarifa @autor:Camila @file:\"Perfil con mapa\" @extension:.PHP @ext:ts")
+        XCTAssertEqual(query.text, "tarifa")
+        XCTAssertEqual(query.authors, ["Camila"])
+        XCTAssertEqual(query.files, ["Perfil con mapa"])
+        XCTAssertEqual(query.exts, ["php", "ts"])
+        XCTAssertTrue(query.hasPathFilters)
+        XCTAssertTrue(query.matches(author: "Camila Rojas"))
+        XCTAssertFalse(query.matches(author: "Tomás Fuentes"))
+        XCTAssertTrue(SearchQuery("@ext:php").matches(path: "app/Tarifa.php"))
+        XCTAssertFalse(SearchQuery("@ext:php").matches(path: "app/carrito.ts"))
+        XCTAssertTrue(SearchQuery("@ ").isEmpty)
+        let tracked = ["app/Services/Envios/Tarifa.php", "docs/a.md", "resources/js/carrito.ts"]
+        XCTAssertEqual(SearchQuery("@archivo:tarifa").matchingPaths(in: tracked), ["app/Services/Envios/Tarifa.php"])
+        XCTAssertEqual(SearchQuery("@ext:.md").matchingPaths(in: tracked), ["docs/a.md"])
+        XCTAssertEqual(SearchQuery("@archivo:Envios @ext:php").matchingPaths(in: tracked), ["app/Services/Envios/Tarifa.php"])
+    }
 }

@@ -342,11 +342,11 @@ import QuartzCore
     @ObservationIgnored private var changesFilterCache: (key: String, staged: [ChangedFile], unstaged: [ChangedFile])?
     /// Path filter for the Changes panels, memoized per snapshot and query.
     func filteredChanges(staged: Bool) -> [ChangedFile] {
-        let query = search.trimmingCharacters(in: .whitespaces)
+        let query = SearchQuery(search)
         guard !query.isEmpty else { return staged ? changes.staged : changes.unstaged }
-        let key = "\(filesRevision)|\(query)"
+        let key = "\(filesRevision)|\(search)"
         if changesFilterCache?.key != key {
-            changesFilterCache = (key, changes.staged.filter { $0.path.localizedCaseInsensitiveContains(query) }, changes.unstaged.filter { $0.path.localizedCaseInsensitiveContains(query) })
+            changesFilterCache = (key, changes.staged.filter { query.matches(path: $0.path) }, changes.unstaged.filter { query.matches(path: $0.path) })
         }
         return staged ? changesFilterCache!.staged : changesFilterCache!.unstaged
     }
@@ -436,7 +436,8 @@ import QuartzCore
         changeTreeKey = key; changeTreeGeneration &+= 1
         let generation = changeTreeGeneration, files = self.files, stats = fileStats
         Task.detached(priority: .userInitiated) { [weak self] in
-            let filtered = query.isEmpty ? files : files.filter { $0.path.localizedCaseInsensitiveContains(query) }
+            let parsed = SearchQuery(query)
+            let filtered = parsed.isEmpty ? files : files.filter { parsed.matches(path: $0.path) }
             let nodes = ChangeNode.tree(filtered) { file in
                 let a = stats[LineStats.key(file.path, staged: false)], b = stats[LineStats.key(file.path, staged: true)]
                 if a == nil && b == nil { return nil }
@@ -486,9 +487,10 @@ import QuartzCore
     func historyModel(search: String, scope: Set<String>?) -> HistoryModel {
         let key = "\(revision)|\(search)|\(scope.map { "\($0.count)-\($0.hashValue)" } ?? "all")"
         if let cache = historyCache, cache.key == key { return cache.model }
-        let query = search.trimmingCharacters(in: .whitespaces)
+        let query = SearchQuery(search)
         let commits = (repository?.commits ?? []).filter { commit in
-            (scope == nil || scope!.contains(commit.hash)) && (query.isEmpty || "\(commit.subject) \(commit.author) \(commit.hash) \(commit.refs)".localizedCaseInsensitiveContains(query))
+            (scope == nil || scope!.contains(commit.hash)) && query.matches(author: commit.author)
+                && (query.text.isEmpty || "\(commit.subject) \(commit.author) \(commit.hash) \(commit.refs)".localizedCaseInsensitiveContains(query.text))
         }
         let model = HistoryModel(commits: commits, graph: CommitGraph(commits: commits, localBranches: refs.localBranches))
         historyCache = (key, model)
@@ -596,6 +598,56 @@ import QuartzCore
         if let commit = repository?.commits.first(where: { $0.hash.hasPrefix(hash) }) { route = .history; withAnimation(.snappy) { selectedCommit = commit } }
         else { notify(L("commitNotLoaded"), icon: "info.circle.fill") }
     }
+    /// Discard several files after one confirmation (each path is restored or cleaned by the engine).
+    func discardFiles(_ files: [ChangedFile]) {
+        let candidates = files.filter { !$0.conflict }
+        guard let root = repository?.root, !busy && !terminalActive, !candidates.isEmpty else { return }
+        if candidates.count == 1 { discard(candidates[0]); return }
+        let untracked = candidates.filter { $0.index == "?" }.count
+        let preview = candidates.prefix(12).map { $0.path }.joined(separator: "\n") + (candidates.count > 12 ? "\n…" : "")
+        pending = PendingOperation(title: String(format: L("discardManyTitle"), candidates.count), root: root, action: "discardMany", value: candidates.map(\.path).joined(separator: "\n"),
+                                   preview: preview, destructive: true, detail: L(untracked > 0 ? "discardManyUntrackedDetail" : "discardManyDetail"))
+    }
+    /// History filtered to the commits that touched one file: written as a search filter, so it is one system.
+    func showFileHistory(_ path: String) {
+        search = SearchQuery.Kind.file.token + SearchQuery.quoted(path)
+        ensureDeepHistory()
+        route = .history
+    }
+    /// File and extension filters may match commits older than the loaded page: load a deep history once.
+    func ensureDeepHistory() { if historyLimit < 5_000 { historyLimit = 5_000; Task { await refresh() } } }
+
+    // MARK: Search suggestions
+    /// Tracked paths (`git ls-files`), loaded on demand for @archivo / @ext suggestions and exact-path detection.
+    private(set) var trackedFiles: [String] = []
+    @ObservationIgnored private var trackedKey = ""
+    @ObservationIgnored private var trackedTask: Task<Void, Never>?
+    /// Callers that arrive while a load is running wait for it instead of reading an empty list.
+    func loadTrackedFiles() async {
+        guard let root = repository?.root else { return }
+        let key = "\(root)|\(revision)"
+        if key != trackedKey {
+            trackedKey = key
+            trackedTask = Task { [weak self] in
+                guard let self, let text = try? await self.engine.query(root, ["ls-files"]) else { return }
+                self.trackedFiles = text.split(separator: "\n").map(String.init)
+            }
+        }
+        await trackedTask?.value
+    }
+    /// Authors of the loaded history with their commit counts, most active first.
+    @ObservationIgnored private var authorCache: (revision: Int, list: [(name: String, count: Int)])?
+    var authorCounts: [(name: String, count: Int)] {
+        if let cache = authorCache, cache.revision == revision { return cache.list }
+        var counts: [String: Int] = [:]
+        for commit in repository?.commits ?? [] { counts[commit.author, default: 0] += 1 }
+        var list: [(name: String, count: Int)] = counts.map { entry in (name: entry.key, count: entry.value) }
+        list.sort { (left: (name: String, count: Int), right: (name: String, count: Int)) -> Bool in
+            left.count == right.count ? left.name < right.name : left.count > right.count
+        }
+        authorCache = (revision, list)
+        return list
+    }
     func discard(_ file: ChangedFile) {
         guard let root = repository?.root, !busy && !terminalActive else { return }
         let preview = file.index == "?" ? "git clean --force -- \(shellQuote(file.path))" : "git restore --worktree -- \(shellQuote(file.path))"
@@ -632,6 +684,17 @@ import QuartzCore
         }
         busy = true; runningAction = operation.action ?? operation.command
         defer { busy = false; runningAction = nil }
+        if operation.action == "discardMany" {
+            let paths = operation.value.split(separator: "\n").map(String.init)
+            var done = 0
+            for path in paths {
+                if (try? await engine.call(["method": "action", "path": operation.root, "action": "discard", "value": path, "confirmed": true]) as String) != nil { done += 1 }
+            }
+            if let selected = selectedFile, paths.contains(selected.path) { selectedFile = nil; diff = "" }
+            status = L("operationComplete")
+            notify(String(format: L("discardedCount"), done), icon: "arrow.uturn.backward.circle.fill")
+            await refresh(); return
+        }
         if let target = operation.copyTarget {
             do {
                 let count: Int = try await engine.call(["method": "copyCommits", "path": operation.root, "target": target, "hashes": operation.copyHashes, "confirmed": true])
@@ -892,6 +955,13 @@ import QuartzCore
                 task.cancel()
             case "checkUpdate": await UpdateService.shared.check(userInitiated: true); NSLog("BUTAKE_QA update phase=%@ latest=%@ available=%d", "\(UpdateService.shared.phase)", UpdateService.shared.latest?.version ?? "-", UpdateService.shared.updateAvailable ? 1 : 0)
             case "installUpdate": await UpdateService.shared.install(); NSLog("BUTAKE_QA update phase=%@", "\(UpdateService.shared.phase)")
+            case let name where name.hasPrefix("fileHistory:"): showFileHistory(String(name.dropFirst(12)))
+            case let name where name.hasPrefix("discardMany:"):
+                let paths = String(name.dropFirst(12)).split(separator: "|").map(String.init)
+                discardFiles(files.filter { paths.contains($0.path) })
+                if let operation = pending { NSLog("BUTAKE_QA confirm title=%@", operation.title); pending = nil; await perform(operation) }
+            case let name where name.hasPrefix("search:"): search = String(name.dropFirst(7)).replacingOccurrences(of: "_", with: " ")
+            case let name where name.hasPrefix("pick:"): NotificationCenter.default.post(name: .init("butake.qa.pickFiles"), object: Int(name.dropFirst(5)) ?? 2)
             case "busyflip":
                 // Reproduces what every Git operation does to the window: busy on, short work, busy off.
                 for _ in 0..<3 { busy = true; try? await Task.sleep(for: .milliseconds(250)); busy = false; try? await Task.sleep(for: .milliseconds(700)) }

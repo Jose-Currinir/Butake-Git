@@ -49,7 +49,7 @@
 "confirmation" = "Revisar operación";
 "confirmationDetail" = "Este comando se ejecutará sobre el repositorio indicado. Puede modificar archivos, historial o el servidor remoto y disparar CI/CD.";
 "protectedMain" = "%@ protegida";
-"searchHistory" = "Buscar commit, autor o referencia";
+"searchHistory" = "Buscar commits · @ para filtrar";
 "searchDictionary" = "Buscar comando o concepto";
 "allBranches" = "Todas las ramas";
 "commits" = "commits";
@@ -372,7 +372,7 @@
 "stagedCount" = "%d archivos preparados";
 "unstagedCount" = "%d archivos retirados del índice";
 "diffTruncated" = "Diff truncado: %d líneas más no se muestran. Ábrelo en la consola Git para verlo completo.";
-"searchChanges" = "Filtrar archivos por ruta";
+"searchChanges" = "Filtrar archivos · @ para filtrar";
 "mainFree" = "%@ libre";
 "mainProtection" = "Protección de main en este repo";
 "protectionAuto" = "Automática (según el remoto)";
@@ -782,3 +782,17 @@
 "commitFromReviewHelp" = "Ir a la lista para escribir el mensaje y confirmar lo preparado";
 "changesTree" = "Carpetas";
 "filesInCommit" = "En el commit";
+"unstageCount" = "Quitar %d archivos del commit";
+"discardCount" = "Descartar cambios en %d archivos…";
+"discardSelected" = "Descartar seleccionados";
+"discardSelectedHelp" = "Selecciona archivos (⇧ o ⌘ para varios) para descartar sus cambios";
+"discardManyTitle" = "Descartar cambios en %d archivos";
+"discardManyDetail" = "Se pierden los cambios sin preparar de estos archivos. No se puede deshacer.";
+"discardManyUntrackedDetail" = "Se pierden los cambios sin preparar y los archivos nuevos se eliminan. No se puede deshacer.";
+"fileCommits" = "Ver commits de este archivo";
+"openDefault" = "Abrir con la app predeterminada";
+"copyPaths" = "Copiar rutas";
+"clearFilter" = "Quitar filtro";
+"searchKind.autor" = "commits de un autor";
+"searchKind.archivo" = "commits que tocaron un archivo";
+"searchKind.ext" = "commits con archivos de una extensión";

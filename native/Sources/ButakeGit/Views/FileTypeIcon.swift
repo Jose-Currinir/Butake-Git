@@ -144,12 +144,16 @@ struct FileType: Hashable {
 struct FileTypeIcon: View {
     let path: String
     var size: CGFloat = 16
+    /// White silhouette for rows selected on an accent background (colored icons get lost on blue).
+    var monochrome = false
     var body: some View {
         let type = FileType.of(path)
         if let image = MaterialFileIcons.shared.image(for: path, light: scheme == .light) {
-            Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+            // No tooltip: this icon sits in every file row and a per-row tooltip slows long lists.
+            Image(nsImage: image).renderingMode(monochrome ? .template : .original).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                .foregroundStyle(.white)
                 .frame(width: size, height: size)
-                .help(type.name).accessibilityLabel(type.name)
+                .accessibilityLabel(type.name)
         } else {
             badge(type)
         }

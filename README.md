@@ -64,9 +64,19 @@ El grafo muestra cómo se ramifica y se une el trabajo, con etiquetas de rama, t
 
 ![Historial con grafo y detalle del commit](docs/presentacion/historial.png)
 
+**Búsqueda con filtros:** escribe `@` en el buscador y elige un filtro; se combinan entre sí y con texto libre.
+
+| Filtro | Muestra |
+|---|---|
+| `@autor:Camila` | commits de ese autor (sugiere autores con su cantidad de commits) |
+| `@archivo:tarifa` | commits que tocaron archivos con ese nombre o ruta (sigue renombres si la ruta es exacta) |
+| `@ext:.php` | commits que tocaron archivos con esa extensión |
+
+También acepta `@author:`, `@file:` y `@extension:`. En Cambios, `@archivo:` y `@ext:` filtran la lista de archivos.
+
 ### Cambios y commit
 
-Paneles **sin preparar** y **preparados**, con el tipo de cada cambio (Nuevo, Modificado, Eliminado, Movido, En conflicto) e íconos por lenguaje. Preparas un archivo, un bloque o todo de una vez. El compositor ayuda con el tipo (`feat`, `fix`…), el largo del mensaje y «Corregir el último commit».
+Paneles **sin preparar** y **preparados**, con el tipo de cada cambio (Nuevo, Modificado, Eliminado, Movido, En conflicto) e íconos por lenguaje. Preparas un archivo, un bloque o todo de una vez; con <kbd>⇧</kbd>/<kbd>⌘</kbd> seleccionas varios para preparar o descartar juntos, y el clic derecho ofrece ver los commits de ese archivo. El compositor ayuda con el tipo (`feat`, `fix`…), el largo del mensaje y «Corregir el último commit».
 
 ![Cambios con diff y compositor de commit](docs/presentacion/cambios.png)
 

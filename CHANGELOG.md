@@ -1,5 +1,14 @@
 # Cambios
 
+## 1.0.6 · 2026-11-11
+
+- **Búsqueda con filtros en el Historial:** `@autor:`, `@archivo:` y `@ext:` (y sus nombres en inglés), con
+  sugerencias desplegables de autores, archivos y extensiones; combinables con texto libre.
+- **Selección múltiple en Cambios** con ⇧/⌘: preparar, sacar o descartar varios archivos de una vez, con una
+  sola confirmación y botón Descartar en la cabecera.
+- **Menú contextual** con íconos y acciones en lote; «Ver commits de este archivo» abre el Historial filtrado.
+- Fila seleccionada y contador de la barra lateral legibles en blanco sobre la selección.
+
 ## 1.0.5 · 2026-11-10
 
 - **Cambios en Lista o Carpetas:** una sola vista con selector centrado. En Carpetas, cada casilla es

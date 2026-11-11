@@ -118,6 +118,8 @@ private struct WorkspaceDetail: View {
         }
         }
         .searchable(text: $store.search, prompt: L(store.route == .changes || store.route == .review ? "searchChanges" : "searchHistory"))
+        .searchSuggestions { SearchSuggestions(store: store) }
+        .onChange(of: store.search.contains("@")) { _, typing in if typing { Task { await store.loadTrackedFiles() } } }
         // Route-dependent window chrome lives here, not in WorkspaceView: reading the route there re-evaluated the
         // whole window (toolbar, sheets, split view) on every section switch.
         .navigationTitle(store.title)
@@ -165,7 +167,7 @@ private struct SidebarView: View {
             List(selection: selection) {
                 Section(L("repository")) {
                     ForEach([WorkspaceRoute.history, .changes, .files, .branches, .sync, .worktrees, .tags, .stash, .remotes, .reflog]) { route in
-                        Label { HStack { Text(route.title); Spacer(); if route == .changes, case let count = store.files.count, count > 0 { Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit()).foregroundStyle(Brand.accent).padding(.horizontal, 6).padding(.vertical, 1).background(Brand.accent.opacity(0.14), in: Capsule()).countTransition(count).transition(.scale.combined(with: .opacity)) } } } icon: { Image(systemName: route.icon) }.listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)")
+                        Label { HStack { Text(route.title); Spacer(); if route == .changes, case let count = store.files.count, count > 0 { SidebarCount(count: count, selected: store.route.isChanges).transition(.scale.combined(with: .opacity)) } } } icon: { Image(systemName: route.icon) }.listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)")
                     }
                 }
                 Section(L("collaboration")) { ForEach([WorkspaceRoute.pullRequests, .pipelines, .agents]) { route in Label(route.title, systemImage: route.icon).listItemTint(Brand.accent).tag(route).accessibilityIdentifier("route.\(route.rawValue)") } }
@@ -696,6 +698,21 @@ private struct WorkViewPicker: View {
         .pickerStyle(.segmented).labelsHidden().controlSize(.large).fixedSize()
         .accessibilityIdentifier("work.view")
         .help(L("workViewHelp"))
+    }
+}
+/// Sidebar counter that stays legible on the selected (accent) row.
+private struct SidebarCount: View {
+    let count: Int
+    var selected: Bool
+    @Environment(\.controlActiveState) private var windowState
+    var body: some View {
+        // The sidebar's selected row is accent-filled while the window is active.
+        let selected = selected && windowState == .key
+        Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit())
+            .foregroundStyle(selected ? Color.white : Brand.accent)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(selected ? Color.white.opacity(0.22) : Brand.accent.opacity(0.14), in: Capsule())
+            .countTransition(count)
     }
 }
 /// Reads the route itself so only the inspector re-evaluates when the section changes.

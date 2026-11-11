@@ -70,11 +70,32 @@ struct HistoryView: View {
                 .onChange(of: store.route) { _, route in focused = route == .history }
             }
         }
-        .task(id: scope) {
-            guard !scope.isEmpty, let root = store.repository?.root else { withAnimation(.smooth) { scopedHashes = nil }; return }
-            do { let text = try await store.engine.query(root, ["log", "--format=%H", scope]); withAnimation(.smooth) { scopedHashes = Set(text.split(separator: "\n").map(String.init)) } } catch { store.fail(error) }
+        .task(id: "\(scope)|\(pathFilterKey)|\(store.repository?.commits.count ?? 0)") {
+            let query = SearchQuery(store.search)
+            guard !scope.isEmpty || query.hasPathFilters, let root = store.repository?.root else { withAnimation(.smooth) { scopedHashes = nil }; return }
+            // Branch scope and/or commits that touched matching paths (@archivo / @ext).
+            var args = ["log", "--format=%H"]
+            if !scope.isEmpty { args.append(scope) }
+            if query.hasPathFilters {
+                store.ensureDeepHistory()
+                await store.loadTrackedFiles()
+                let paths = query.matchingPaths(in: store.trackedFiles)
+                guard !paths.isEmpty else { withAnimation(.smooth) { scopedHashes = [] }; return }
+                // One exact file: follow it through renames.
+                if paths.count == 1, query.exts.isEmpty, query.files.first == paths.first { args.append("--follow") }
+                args += ["--"] + paths
+            }
+            let file: String? = query.hasPathFilters ? "" : nil
+            do {
+                let ordered = try await store.engine.query(root, args).split(separator: "\n").map(String.init)
+                withAnimation(.smooth) { scopedHashes = Set(ordered) }
+                // Show the file's latest commit in the inspector instead of one outside the filter.
+                if file != nil, let selected = store.selectedCommit?.hash, !ordered.contains(selected), let first = ordered.first { store.selectCommit(hash: first) }
+            } catch { store.fail(error) }
         }
     }
+    /// Only the path filters reach Git; free text and @autor filter the loaded commits locally.
+    private var pathFilterKey: String { let query = SearchQuery(store.search); return (query.files + ["|"] + query.exts).joined(separator: ",") }
     private func move(_ offset: Int, in commits: [GitCommit], proxy: ScrollViewProxy) -> KeyPress.Result {
         guard !commits.isEmpty else { return .ignored }
         let current = commits.firstIndex { $0.hash == store.selectedCommit?.hash } ?? (offset > 0 ? -1 : commits.count)
@@ -375,14 +396,16 @@ private struct CommitFileRow: View {
 }
 struct StatsBadge: View {
     let stats: LineStats
+    /// On a selected (accent) row the green/red figures become white to stay legible.
+    var inverted = false
     var body: some View {
         HStack(spacing: 4) {
             if stats.binary { Text(L("binary")).foregroundStyle(.secondary) }
             else {
                 // No numeric transition or tooltip: this badge sits in every changed-file row and its numbers move
                 // with each write of an agent; animated digits are rasterized on the main thread.
-                if let additions = stats.additions, additions > 0 { Text("+\(additions)").foregroundStyle(Brand.accent) }
-                if let deletions = stats.deletions, deletions > 0 { Text("−\(deletions)").foregroundStyle(.red) }
+                if let additions = stats.additions, additions > 0 { Text("+\(additions)").foregroundStyle(inverted ? Color.white : Brand.accent) }
+                if let deletions = stats.deletions, deletions > 0 { Text("−\(deletions)").foregroundStyle(inverted ? Color.white.opacity(0.85) : .red) }
             }
         }.font(.system(size: 9, weight: .semibold, design: .monospaced)).fixedSize()
         .accessibilityElement(children: .ignore).accessibilityLabel(description)
