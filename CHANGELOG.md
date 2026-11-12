@@ -1,5 +1,16 @@
 # Cambios
 
+## 1.0.10 · 2026-11-12
+
+- **Detecta si falta Git:** en un Mac sin Git la app lo dice al abrir, ofrece el instalador oficial de Apple
+  (herramientas de línea de comandos, sin Xcode completo) y continúa sola cuando termina. Si ya tienes Git de
+  Homebrew, usa ese.
+- **Integración con Butake Stack:** botón «Abrir en Butake Stack» cuando el repositorio es un sitio de Stack, o
+  «Agregar a Butake Stack» para servirlo como sitio `.test`.
+- **Abrir desde otras apps:** `butakegit://open?path=…` y las carpetas entregadas a la app abren el repositorio.
+- Los temas y el tamaño de texto vienen ahora del paquete compartido
+  [Butake Design](https://github.com/Jose-Currinir/Butake-Design), el mismo de Butake Stack.
+
 ## 1.0.9 · 2026-11-11
 
 - **Corregido: la app se pegaba al guardar** desde el editor con la pestaña «Ver cambios» abierta.

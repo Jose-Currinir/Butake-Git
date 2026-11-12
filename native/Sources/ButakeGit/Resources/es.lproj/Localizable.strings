@@ -843,3 +843,17 @@
 "resetHardDetail" = "Reset --hard descarta los cambios sin commit del directorio de trabajo y del índice.";
 "newFilePartsWhole" = "Archivo nuevo: se muestra completo. Una parte ya está preparada (la copia inicial) y lo editado después todavía no; prepara el archivo para que el commit lo lleve entero.";
 "newFilePartsStaged" = "Archivo nuevo: esto es lo que ya está preparado. Tiene ediciones posteriores sin preparar que el commit no incluiría.";
+
+/* Butake Stack */
+"openInStack" = "Abrir en Butake Stack";
+"openInStackHelp" = "Este repositorio es un sitio de Butake Stack: abre su página";
+"addToStack" = "Agregar a Butake Stack";
+"addToStackHelp" = "Servir este repositorio como sitio .test en Butake Stack";
+
+/* Git requerido */
+"gitMissingTitle" = "Butake Git necesita Git";
+"gitMissingDetail" = "Este Mac no tiene Git. Butake Git usa el Git real, así que primero hay que instalarlo: lo hace el instalador oficial de Apple (herramientas de línea de comandos), sin Xcode completo.";
+"gitMissingInstall" = "Instalar Git";
+"gitMissingRetry" = "Buscar de nuevo";
+"gitMissingWaiting" = "Sigue los pasos del instalador de Apple. Cuando termine, Butake Git continúa solo.";
+"gitMissingHomebrew" = "Si ya tienes Git de Homebrew (/opt/homebrew/bin/git), se usa ese.";
