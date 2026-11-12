@@ -4,10 +4,15 @@ import AppKit
 @main struct ButakeGitApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var workspace = WorkspaceStore()
+    @State private var requirement = GitRequirement.shared
     /// The window's `.task` runs again each time it is reopened; app-level startup must happen once.
     @State private var launched = false
     @AppStorage("notchEnabled") private var notchEnabled = true
-    init() { ThemedScroller.install() }
+    init() {
+        ThemeStore.shared.brandName = "Butake Git"
+        ThemeStore.shared.customName = L("themeCustom")
+        ThemedScroller.install()
+    }
     var body: some Scene {
         Window("Butake Git", id: MainWindow.id) {
             WorkspaceView(store: workspace)
@@ -18,9 +23,13 @@ import AppKit
                 .onChange(of: notchEnabled) { _, _ in NotchController.shared.update() }
                 .frame(minWidth: 850, minHeight: 580)
                 .modifier(MainWindowOpener())
+                .sheet(isPresented: Binding(get: { requirement.showingSheet }, set: { _ in })) { GitRequirementSheet(requirement: requirement).themedSheet() }
                 .task {
                     guard !launched else { return }
                     launched = true
+                    // Nothing works without Git: find it, or install it and wait, before the first engine call.
+                    await requirement.waitUntilReady()
+                    ExternalOpen.workspace = workspace
                     await workspace.loadCapabilities()
                     NotchController.shared.start(store: workspace)
                     workspace.startAutoFetch()

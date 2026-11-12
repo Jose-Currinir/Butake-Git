@@ -13,7 +13,7 @@ Butake Git debe poder manejarse por completo mediante Accesibilidad de macOS (AX
 
 | Área | Identificadores |
 |---|---|
-| Barra de herramientas | `toolbar.fetch`, `toolbar.pull`, `toolbar.push`, `toolbar.tools`, `toolbar.refresh`, `toolbar.inspector` |
+| Barra de herramientas | `toolbar.fetch`, `toolbar.pull`, `toolbar.push`, `toolbar.tools`, `toolbar.refresh`, `toolbar.stack` (sólo con Butake Stack instalado), `toolbar.inspector` |
 | Barra lateral | `sidebar.repository`, `sidebar.clone`, `sidebar.newBranch`, `route.<ruta>` (p. ej. `route.history`, `route.changes`), `branch.<nombre>` (acciones AX: cambiar, renombrar, eliminar), `remoteBranch.<remoto/rama>` (acciones AX: traer, eliminar remota) |
 | Bienvenida | `welcome.open`, `welcome.clone`, `welcome.newRepository` |
 | Crear y publicar | `sidebar.newRepository`, `sidebar.publish`, `status.publish`, `remotes.publish`, `newRepo.name`, `newRepo.create`, `publish.name`, `publish.submit` |

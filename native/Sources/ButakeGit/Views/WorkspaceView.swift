@@ -5,6 +5,8 @@ struct WorkspaceView: View {
     @Bindable var store: WorkspaceStore
     @State private var rebaseSheet = false
     @State private var updates = UpdateService.shared
+    /// The Butake Stack site serving this repository, looked up when the repository changes.
+    @State private var stackSite: String?
     var body: some View {
         NavigationSplitView {
             SidebarView(store: store)
@@ -43,6 +45,15 @@ struct WorkspaceView: View {
                     } label: { Label(L("tools"), systemImage: "ellipsis.circle") }.accessibilityIdentifier("toolbar.tools").disabled(store.repository == nil)
                     Button { Task { await store.refresh(); store.notify(L("refreshed"), icon: "arrow.clockwise.circle.fill") } } label: { Label(L("refresh"), systemImage: "arrow.clockwise") }.accessibilityIdentifier("toolbar.refresh").disabled(store.repository == nil)
                 }
+                if StackLink.installed, let root = store.repository?.root {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button {
+                            if let stackSite { StackLink.openSite(stackSite) } else { StackLink.add(root) }
+                        } label: { Label(stackSite == nil ? L("addToStack") : L("openInStack"), systemImage: "server.rack") }
+                            .help(stackSite == nil ? L("addToStackHelp") : L("openInStackHelp"))
+                            .accessibilityIdentifier("toolbar.stack")
+                    }
+                }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.showInspector.toggle() } label: { Label(L("inspector"), systemImage: "sidebar.right") }.accessibilityIdentifier("toolbar.inspector")
                 }
@@ -51,6 +62,10 @@ struct WorkspaceView: View {
             // With the inspector open the search field spans both columns. The system toolbar background
             // overhangs the sidebar divider by ~3 pt, so the bar surface is drawn here, flush with the column.
             .overlay { if store.showInspector { ToolbarStrip().transition(.opacity) } }
+        }
+        .task(id: store.repository?.root) {
+            guard let root = store.repository?.root else { stackSite = nil; return }
+            stackSite = await Task.detached { StackLink.site(for: root) }.value
         }
         .sheet(item: $store.pending) { operation in OperationConfirmation(store: store, operation: operation).themedSheet() }
         .sheet(item: $store.diffRequest) { request in QueryDiffSheet(store: store, request: request).themedSheet() }

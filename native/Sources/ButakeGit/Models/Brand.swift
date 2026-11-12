@@ -1,12 +1,14 @@
 import SwiftUI
 import AppKit
+// Themes (Theme, ThemeStore) and the text size (TextScale, Font.ui…) shared with Butake Stack.
+@_exported import ButakeDesign
 
 func L(_ key: String) -> String { Bundle.module.localizedString(forKey: key, value: key, table: "Localizable") }
 enum Brand {
     static let green = Color(red: 25/255, green: 215/255, blue: 159/255)
     static let forest = Color(red: 15/255, green: 41/255, blue: 34/255)
     // Every color below comes from the active theme (ThemeStore): views that read them re-render when it changes.
-    static var theme: Theme { ThemeStore.shared.theme }
+    static var theme: Theme { ThemeStore.current }
     static var accent: Color { theme.accent.color }
     static var graph: [Color] { theme.graph.map(\.color) }
     /// Semantic colors: removed / errors, warnings and conflicts, modified / remote / info, moved.

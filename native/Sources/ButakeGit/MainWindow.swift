@@ -28,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The app keeps running with the notch after the window closes, like before the single-window scene.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// `butakegit://open?path=…` (from Butake Stack) and folders handed to the app open as repositories.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated { ExternalOpen.handle(urls) }
+    }
+
     /// The notch panel counts as a visible window, so the Dock click is handled here explicitly.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if MainWindow.current?.isVisible != true { MainActor.assumeIsolated { MainWindow.show() } }
